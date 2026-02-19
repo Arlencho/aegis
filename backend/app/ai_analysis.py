@@ -66,10 +66,10 @@ async def analyze_treasury(balances: dict, report: dict) -> dict | None:
         return None
 
     try:
-        client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.AsyncAnthropic(api_key=api_key)
         prompt = _build_prompt(balances, report)
 
-        message = client.messages.create(
+        message = await client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import Sidebar from "./components/Sidebar";
 import NotificationBell from "./components/NotificationBell";
+import PlanBadge from "./components/PlanBadge";
 import { ToastProvider } from "./components/Toast";
 
 export default async function DashboardLayout({
@@ -32,9 +33,7 @@ export default async function DashboardLayout({
               </div>
               <div className="hidden md:block" />
               <div className="flex items-center gap-3">
-                <span className="text-xs px-2 py-1 rounded-full bg-gray-800 text-gray-400">
-                  Free Plan
-                </span>
+                <PlanBadge />
                 <NotificationBell />
                 <span className="text-sm text-gray-400 hidden sm:inline">
                   {session.user.email}

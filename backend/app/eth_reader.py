@@ -43,6 +43,39 @@ NATIVE_TOKENS: dict[str, str] = {
     "polygon": "POL",
 }
 
+COINGECKO_PLATFORM_IDS: dict[str, str] = {
+    "ethereum": "ethereum",
+    "bsc": "binance-smart-chain",
+    "base": "base",
+    "arbitrum": "arbitrum-one",
+    "polygon": "polygon-pos",
+}
+
+
+async def _fetch_token_prices(
+    addresses: list[str], chain: str = "ethereum"
+) -> dict[str, float]:
+    """Batch-fetch USD prices for ERC-20 tokens from CoinGecko.
+
+    Returns {contract_address_lower: usd_price}. Free tier, no key needed.
+    """
+    if not addresses:
+        return {}
+    platform = COINGECKO_PLATFORM_IDS.get(chain, "ethereum")
+    csv = ",".join(addresses)
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"https://api.coingecko.com/api/v3/simple/token_price/{platform}",
+                params={"contract_addresses": csv, "vs_currencies": "usd"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {addr.lower(): info["usd"] for addr, info in data.items() if "usd" in info}
+    except Exception as e:
+        logger.warning(f"CoinGecko token price fetch failed: {e}")
+        return {}
+
 
 def _safe_int(value: str, default: int = 0) -> int:
     """Parse an int from Etherscan, returning default if the result is an error string."""
@@ -146,6 +179,9 @@ async def fetch_eoa_balances(address: str, chain: str = "ethereum") -> dict | No
                     break
 
         # 4. Get balance for each discovered token (with rate limit delays)
+        token_balances: list[dict] = []
+        non_stable_addresses: list[str] = []
+
         for contract, info in seen_contracts.items():
             await asyncio.sleep(ETHERSCAN_DELAY)
             try:
@@ -175,21 +211,37 @@ async def fetch_eoa_balances(address: str, chain: str = "ethereum") -> dict | No
             balance = raw_balance / (10 ** decimals)
             is_stablecoin = contract in STABLECOINS
 
-            if is_stablecoin:
-                usd_value = balance
-            else:
-                usd_value = 0.0
-
-            total_usd += usd_value
-
-            tokens.append({
+            token_balances.append({
+                "contract": contract,
                 "symbol": info["symbol"],
                 "balance": balance,
-                "usd_value": usd_value,
                 "is_stablecoin": is_stablecoin,
-                "address": contract,
                 "decimals": decimals,
             })
+
+            if not is_stablecoin:
+                non_stable_addresses.append(contract)
+
+    # 5. Batch-fetch prices for non-stablecoin tokens via CoinGecko
+    cg_prices = await _fetch_token_prices(non_stable_addresses, chain=chain)
+
+    for tb in token_balances:
+        if tb["is_stablecoin"]:
+            usd_value = tb["balance"]
+        else:
+            price = cg_prices.get(tb["contract"], 0.0)
+            usd_value = tb["balance"] * price
+
+        total_usd += usd_value
+
+        tokens.append({
+            "symbol": tb["symbol"],
+            "balance": tb["balance"],
+            "usd_value": usd_value,
+            "is_stablecoin": tb["is_stablecoin"],
+            "address": tb["contract"],
+            "decimals": tb["decimals"],
+        })
 
     return {
         "address": address,

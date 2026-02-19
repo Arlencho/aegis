@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import type { Notification } from "../../components/types";
 import { useToast } from "../components/Toast";
 
@@ -27,6 +28,7 @@ function timeAgo(dateStr: string): string {
 export default function NotificationsPage() {
   const { data: session } = useSession();
   const { showToast } = useToast();
+  const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -131,9 +133,12 @@ export default function NotificationsPage() {
             return (
               <div
                 key={n.id}
-                onClick={() => !n.is_read && handleMarkRead(n.id)}
+                onClick={() => {
+                  if (!n.is_read) handleMarkRead(n.id);
+                  if (n.audit_id) router.push(`/dashboard/audits/${n.audit_id}`);
+                }}
                 className={`bg-gray-900 border border-gray-800 rounded-lg p-4 transition
-                  ${!n.is_read ? "cursor-pointer hover:border-gray-700" : ""}`}
+                  ${n.audit_id || !n.is_read ? "cursor-pointer hover:border-gray-700" : ""}`}
               >
                 <div className="flex items-start gap-3">
                   <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${style.dot}`} />

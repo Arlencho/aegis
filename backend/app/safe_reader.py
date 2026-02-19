@@ -79,14 +79,17 @@ async def fetch_safe_balances(safe_address: str) -> dict | None:
             and token_address.lower() in STABLECOINS
         )
 
-        if token_address is None:
+        # Use Safe API's fiatBalance if available, otherwise fall back
+        fiat = item.get("fiatBalance")
+        if fiat is not None and float(fiat) > 0:
+            usd_value = float(fiat)
+        elif token_address is None:
             # Native ETH
             usd_value = balance * eth_price
         elif is_stablecoin:
             # Known stablecoins at $1.00/unit
             usd_value = balance
         else:
-            # Unknown tokens — $0 estimate (conservative)
             usd_value = 0.0
 
         total_usd += usd_value

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Notification } from "../../components/types";
 
@@ -26,6 +27,7 @@ function timeAgo(dateStr: string): string {
 
 export default function NotificationBell() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -159,8 +161,15 @@ export default function NotificationBell() {
               notifications.map((n) => (
                 <div
                   key={n.id}
+                  onClick={() => {
+                    if (n.audit_id) {
+                      router.push(`/dashboard/audits/${n.audit_id}`);
+                      setOpen(false);
+                    }
+                  }}
                   className={`px-4 py-3 border-b border-gray-800/50 hover:bg-gray-800/30 transition
-                    ${!n.is_read ? "bg-gray-800/20" : ""}`}
+                    ${!n.is_read ? "bg-gray-800/20" : ""}
+                    ${n.audit_id ? "cursor-pointer" : ""}`}
                 >
                   <div className="flex items-start gap-2.5">
                     <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${SEVERITY_DOT[n.severity] || "bg-gray-400"}`} />

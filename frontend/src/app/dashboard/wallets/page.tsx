@@ -53,6 +53,12 @@ export default function WalletsPage() {
         body: JSON.stringify({ include_ai: true }),
       });
       if (res.ok) {
+        const report = await res.json();
+        const status = report.overall_status;
+        showToast(
+          `Audit ${status === "COMPLIANT" ? "passed" : "flagged"} — ${report.passed}/${report.total_rules} rules${report.ai_analysis?.risk_level ? `, ${report.ai_analysis.risk_level} risk` : ""}`,
+          status === "COMPLIANT" ? "success" : "error"
+        );
         await fetchWallets();
       }
     } catch {

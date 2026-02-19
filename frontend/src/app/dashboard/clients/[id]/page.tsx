@@ -17,8 +17,18 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { Client, Wallet, Chain, AuditHistorySummary } from "../../../components/types";
+import { CHAIN_CONFIG } from "../../../components/constants";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+const CHAIN_COLORS: Record<Chain, { active: string; inactive: string }> = {
+  ethereum: { active: "bg-blue-600 text-white", inactive: "bg-gray-800 text-gray-400" },
+  solana: { active: "bg-purple-600 text-white", inactive: "bg-gray-800 text-gray-400" },
+  bsc: { active: "bg-yellow-600 text-white", inactive: "bg-gray-800 text-gray-400" },
+  base: { active: "bg-sky-600 text-white", inactive: "bg-gray-800 text-gray-400" },
+  arbitrum: { active: "bg-indigo-600 text-white", inactive: "bg-gray-800 text-gray-400" },
+  polygon: { active: "bg-violet-600 text-white", inactive: "bg-gray-800 text-gray-400" },
+};
 
 const RISK_MAP: Record<string, number> = { low: 1, medium: 2, high: 3 };
 const RISK_COLORS: Record<number, string> = { 1: "#4ade80", 2: "#facc15", 3: "#f87171" };
@@ -157,6 +167,12 @@ export default function ClientDetailPage() {
         body: JSON.stringify({ include_ai: true }),
       });
       if (res.ok) {
+        const report = await res.json();
+        const status = report.overall_status;
+        showToast(
+          `Audit ${status === "COMPLIANT" ? "passed" : "flagged"} — ${report.passed}/${report.total_rules} rules${report.ai_analysis?.risk_level ? `, ${report.ai_analysis.risk_level} risk` : ""}`,
+          status === "COMPLIANT" ? "success" : "error"
+        );
         await fetchData();
       }
     } catch {
@@ -296,29 +312,24 @@ export default function ClientDetailPage() {
       {showForm && (
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-6">
           <form onSubmit={handleAddWallet} className="space-y-3">
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setChain("ethereum")}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition min-h-[36px]
-                  ${chain === "ethereum" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400"}`}
-              >
-                Ethereum
-              </button>
-              <button
-                type="button"
-                onClick={() => setChain("solana")}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition min-h-[36px]
-                  ${chain === "solana" ? "bg-purple-600 text-white" : "bg-gray-800 text-gray-400"}`}
-              >
-                Solana
-              </button>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(CHAIN_CONFIG) as Chain[]).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setChain(c)}
+                  className={`px-3 py-1.5 rounded text-xs font-medium transition min-h-[36px]
+                    ${chain === c ? CHAIN_COLORS[c].active : CHAIN_COLORS[c].inactive}`}
+                >
+                  {CHAIN_CONFIG[c].name}
+                </button>
+              ))}
             </div>
             <input
               type="text"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              placeholder={chain === "ethereum" ? "0x..." : "Base58 address..."}
+              placeholder={CHAIN_CONFIG[chain].placeholder}
               className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg
                          text-white placeholder-gray-500 font-mono text-sm min-h-[44px]
                          focus:outline-none focus:border-blue-500"
@@ -372,7 +383,7 @@ export default function ClientDetailPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
-                    ${wallet.chain === "ethereum" ? "bg-blue-400/10 text-blue-400" : "bg-purple-400/10 text-purple-400"}`}>
+                    ${CHAIN_COLORS[wallet.chain as Chain]?.active || "bg-gray-400/10 text-gray-400"}`}>
                     {wallet.chain}
                   </span>
                   {wallet.label && (

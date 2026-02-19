@@ -23,7 +23,7 @@ from .database import (
     init_db, close_db,
     add_to_waitlist, get_waitlist_count,
     save_audit, get_audit_history, get_audit_detail,
-    create_user, get_user_by_email, get_user_by_id,
+    create_user, get_user_by_email, get_user_by_id, update_user_name,
     create_organization, get_user_orgs, get_org, get_org_member, get_org_members,
     add_org_member, remove_org_member,
     create_client, get_clients, get_client, update_client, delete_client,
@@ -281,6 +281,27 @@ async def verify_credentials(request: VerifyRequest, req: Request):
         "email": user["email"],
         "name": user["name"],
         "plan": user["plan"],
+    }
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str | None = None
+
+
+@app.patch("/users/me")
+async def update_me(request: UpdateProfileRequest, user: dict = Depends(get_current_user)):
+    """Update current user profile."""
+    user_id = _get_user_id(user)
+    if request.name is not None:
+        await update_user_name(user_id, request.name.strip())
+    db_user = await get_user_by_id(user_id)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "id": db_user["id"],
+        "email": db_user["email"],
+        "name": db_user["name"],
+        "plan": db_user["plan"],
     }
 
 
@@ -908,8 +929,17 @@ async def validate_json(request: ValidateRequest, req: Request):
 # --- Audit History endpoints ---
 
 @app.get("/audits/{wallet_address}")
-async def audit_history(wallet_address: str, limit: int = 20):
-    """Return audit history for a wallet address."""
+async def audit_history(
+    wallet_address: str,
+    user: dict = Depends(get_current_user),
+    limit: int = 20,
+):
+    """Return audit history for a wallet address (auth required, ownership checked)."""
+    user_id = _get_user_id(user)
+    wallets = await get_wallets_for_user(user_id)
+    user_addresses = {w["address"].lower() for w in wallets}
+    if wallet_address.lower().strip() not in user_addresses:
+        raise HTTPException(status_code=404, detail="Wallet not found")
     history = await get_audit_history(wallet_address, limit=min(limit, 100))
     return {"wallet_address": wallet_address, "audits": history}
 

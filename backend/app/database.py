@@ -323,6 +323,19 @@ async def get_user_by_email(email: str) -> dict | None:
         return None
 
 
+async def update_user_name(user_id: int, name: str) -> None:
+    """Update a user's display name."""
+    if not _pool:
+        return
+    try:
+        await _pool.execute(
+            "UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2",
+            name, user_id,
+        )
+    except Exception as e:
+        logger.error(f"User name update failed: {e}")
+
+
 async def get_user_by_id(user_id: int) -> dict | None:
     """Fetch user by ID. Returns user dict without password_hash."""
     if not _pool:
