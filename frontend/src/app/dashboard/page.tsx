@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import type { Wallet } from "../components/types";
+import { useToast } from "./components/Toast";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -17,6 +18,7 @@ interface DashboardStats {
 
 export default function DashboardPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const firstName = session?.user?.name?.split(" ")[0] || "there";
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,7 +34,7 @@ export default function DashboardPage() {
           setStats(await res.json());
         }
       } catch {
-        // silently fail
+        showToast("Failed to load dashboard");
       } finally {
         setLoading(false);
       }

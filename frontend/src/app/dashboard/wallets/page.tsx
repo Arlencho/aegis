@@ -4,11 +4,13 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import type { Wallet } from "../../components/types";
+import { useToast } from "../components/Toast";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function WalletsPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +26,7 @@ export default function WalletsPage() {
         setWallets(data.wallets || []);
       }
     } catch {
-      // silently fail
+      showToast("Failed to load wallets");
     } finally {
       setLoading(false);
     }
@@ -54,7 +56,7 @@ export default function WalletsPage() {
         await fetchWallets();
       }
     } catch {
-      // silently fail
+      showToast("Failed to run audit");
     } finally {
       setAuditingId(null);
     }
@@ -71,7 +73,7 @@ export default function WalletsPage() {
       });
       await fetchWallets();
     } catch {
-      // silently fail
+      showToast("Failed to remove wallet");
     }
   }
 

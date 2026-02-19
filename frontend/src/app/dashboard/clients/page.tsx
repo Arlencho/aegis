@@ -4,11 +4,13 @@ import { useState, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import type { Client, Organization } from "../../components/types";
+import { useToast } from "../components/Toast";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function ClientsPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -32,7 +34,7 @@ export default function ClientsPage() {
         setClients(data.clients || []);
       }
     } catch {
-      // silently fail
+      showToast("Failed to load clients");
     } finally {
       setLoading(false);
     }
@@ -54,7 +56,7 @@ export default function ClientsPage() {
         );
       }
     } catch {
-      // silently fail
+      // org fetch is non-critical
     }
   }
 
@@ -110,7 +112,7 @@ export default function ClientsPage() {
       });
       await fetchClients();
     } catch {
-      // silently fail
+      showToast("Failed to delete client");
     } finally {
       setDeletingId(null);
     }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import type { Notification } from "../../components/types";
+import { useToast } from "../components/Toast";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -25,6 +26,7 @@ function timeAgo(dateStr: string): string {
 
 export default function NotificationsPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -43,7 +45,7 @@ export default function NotificationsPage() {
         setNotifications(data.notifications || []);
       }
     } catch {
-      // silently fail
+      showToast("Failed to load notifications");
     } finally {
       setLoading(false);
     }
@@ -63,7 +65,7 @@ export default function NotificationsPage() {
       });
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     } catch {
-      // silently fail
+      showToast("Failed to mark notifications as read");
     }
   }
 
@@ -78,7 +80,7 @@ export default function NotificationsPage() {
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
       );
     } catch {
-      // silently fail
+      showToast("Failed to mark notification as read");
     }
   }
 

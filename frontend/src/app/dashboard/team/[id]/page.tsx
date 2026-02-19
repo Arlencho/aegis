@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { Organization, OrgMember } from "../../../components/types";
+import { useToast } from "../../components/Toast";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -12,6 +13,7 @@ export default function OrgDetailPage() {
   const { data: session } = useSession();
   const params = useParams();
   const orgId = params.id as string;
+  const { showToast } = useToast();
 
   const [org, setOrg] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -40,7 +42,7 @@ export default function OrgDetailPage() {
         setMembers(data.members || []);
       }
     } catch {
-      // silently fail
+      showToast("Failed to load organization");
     } finally {
       setLoading(false);
     }
@@ -91,7 +93,7 @@ export default function OrgDetailPage() {
       });
       await fetchData();
     } catch {
-      // silently fail
+      showToast("Failed to remove member");
     } finally {
       setRemovingId(null);
     }

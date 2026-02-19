@@ -1147,7 +1147,7 @@ async def get_audit_detail(audit_id: int) -> dict | None:
         row = await _pool.fetchrow(
             """SELECT id, wallet_address, chain, total_usd, overall_status,
                       passed, failed, total_rules, risk_level,
-                      report_json, created_at
+                      report_json, created_at, user_id, client_id
                  FROM audit_history
                 WHERE id = $1""",
             audit_id,

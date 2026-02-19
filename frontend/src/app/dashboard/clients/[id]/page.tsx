@@ -4,6 +4,7 @@ import { useState, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useToast } from "../../components/Toast";
 import {
   LineChart,
   Line,
@@ -26,6 +27,7 @@ export default function ClientDetailPage() {
   const { data: session } = useSession();
   const params = useParams();
   const clientId = params.id as string;
+  const { showToast } = useToast();
 
   const [mounted, setMounted] = useState(false);
   const [client, setClient] = useState<Client | null>(null);
@@ -77,7 +79,7 @@ export default function ClientDetailPage() {
         setAuditHistory(data.audits || []);
       }
     } catch {
-      // silently fail
+      showToast("Failed to load client data");
     } finally {
       setLoading(false);
     }
@@ -142,7 +144,7 @@ export default function ClientDetailPage() {
       });
       await fetchData();
     } catch {
-      // silently fail
+      showToast("Failed to remove wallet");
     }
   }
 
@@ -158,7 +160,7 @@ export default function ClientDetailPage() {
         await fetchData();
       }
     } catch {
-      // silently fail
+      showToast("Failed to run audit");
     } finally {
       setAuditing(null);
     }
@@ -176,7 +178,7 @@ export default function ClientDetailPage() {
       });
       if (res.ok) await fetchData();
     } catch {
-      // silently fail
+      showToast("Failed to update schedule");
     }
   }
 

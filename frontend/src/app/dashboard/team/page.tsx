@@ -4,11 +4,13 @@ import { useState, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import type { Organization } from "../../components/types";
+import { useToast } from "../components/Toast";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function TeamPage() {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -29,7 +31,7 @@ export default function TeamPage() {
         setOrgs(data.organizations || []);
       }
     } catch {
-      // silently fail
+      showToast("Failed to load organizations");
     } finally {
       setLoading(false);
     }

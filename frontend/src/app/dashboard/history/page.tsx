@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useToast } from "../components/Toast";
 import {
   LineChart,
   Line,
@@ -22,6 +23,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export default function HistoryPage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const { showToast } = useToast();
   const [audits, setAudits] = useState<AuditHistorySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -44,7 +46,7 @@ export default function HistoryPage() {
           setAudits(data.audits || []);
         }
       } catch {
-        // silently fail
+        showToast("Failed to load audit history");
       } finally {
         setLoading(false);
       }

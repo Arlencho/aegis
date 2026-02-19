@@ -915,9 +915,22 @@ async def audit_history(wallet_address: str, limit: int = 20):
 
 
 @app.get("/audits/detail/{audit_id}")
-async def audit_detail(audit_id: int):
-    """Return a single audit with full report data."""
+async def audit_detail(audit_id: int, user: dict = Depends(get_current_user)):
+    """Return a single audit with full report data (auth required, ownership checked)."""
     result = await get_audit_detail(audit_id)
     if result is None:
+        raise HTTPException(status_code=404, detail="Audit not found")
+    # Ownership check: user must own the audit directly or via client access
+    user_id = user.get("sub") or user.get("id")
+    if user_id:
+        user_id = int(user_id)
+    audit_user_id = result.get("user_id")
+    audit_client_id = result.get("client_id")
+    has_access = False
+    if audit_user_id and audit_user_id == user_id:
+        has_access = True
+    elif audit_client_id and user_id:
+        has_access = await user_can_access_client(user_id, audit_client_id)
+    if not has_access:
         raise HTTPException(status_code=404, detail="Audit not found")
     return result
