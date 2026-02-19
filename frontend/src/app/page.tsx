@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 
 // --- Type Definitions ---
 
@@ -51,7 +51,18 @@ interface ComplianceReport {
 // --- Constants ---
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const SAMPLE_SAFE = "0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52";
+
+type Chain = "ethereum" | "solana";
+
+const SAMPLE_ADDRESSES: Record<Chain, string> = {
+  ethereum: "0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52",
+  solana: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+};
+
+const CHAIN_CONFIG: Record<Chain, { name: string; placeholder: string }> = {
+  ethereum: { name: "Ethereum", placeholder: "0x..." },
+  solana: { name: "Solana", placeholder: "Base58 address..." },
+};
 
 interface RuleConfig {
   type: string;
@@ -149,6 +160,7 @@ interface Scenario {
   subtitle: string;
   tag: string;
   tagColor: "green" | "red" | "yellow";
+  chain?: Chain;
   report: ComplianceReport;
 }
 
@@ -257,11 +269,66 @@ const SCENARIOS: Scenario[] = [
       ai_analysis: null,
     },
   },
+  {
+    id: "solana-balanced",
+    title: "Solana Treasury (Balanced)",
+    subtitle: "$1.5M SOL + stablecoins",
+    tag: "Compliant",
+    tagColor: "green",
+    chain: "solana",
+    report: {
+      safe_address: "9WzD...AWWM (Solana)",
+      total_usd: 1500000,
+      overall_status: "COMPLIANT",
+      passed: 5,
+      failed: 0,
+      total_rules: 5,
+      results: [
+        { rule: "allocation_cap", name: "Single-Token Concentration Cap", description: "", rationale: "", passed: true, current_value: "26.7%", threshold: "30%", severity: "breach", detail: "Largest position is SOL at 26.7% — within the 30% cap" },
+        { rule: "stablecoin_floor", name: "Stablecoin Minimum Floor", description: "", rationale: "", passed: true, current_value: "35.0%", threshold: "20%", severity: "breach", detail: "Stablecoins: $525,000 (35.0% of portfolio) — USDC + USDT" },
+        { rule: "single_asset_cap", name: "Absolute Asset Value Cap", description: "", rationale: "", passed: true, current_value: "all within cap", threshold: "$500,000", severity: "warning", detail: "No single asset exceeds the $500,000 absolute cap" },
+        { rule: "max_tx_size", name: "Transaction Size Limit", description: "", rationale: "", passed: true, current_value: "8 txs checked", threshold: "$100,000", severity: "breach", detail: "All 8 recent transactions within $100,000 cap" },
+        { rule: "inactivity_alert", name: "Activity Monitor", description: "", rationale: "", passed: true, current_value: "4h ago", threshold: "168h", severity: "warning", detail: "Last transaction: 4 hours ago — very active" },
+      ],
+      recommendations: [],
+      ai_analysis: null,
+    },
+  },
+  {
+    id: "solana-concentrated",
+    title: "SOL-Heavy Portfolio",
+    subtitle: "$800K, 85% in SOL",
+    tag: "High Risk",
+    tagColor: "red",
+    chain: "solana",
+    report: {
+      safe_address: "DYw8...3kNz (Solana)",
+      total_usd: 800000,
+      overall_status: "NON-COMPLIANT",
+      passed: 3,
+      failed: 2,
+      total_rules: 5,
+      results: [
+        { rule: "allocation_cap", name: "Single-Token Concentration Cap", description: "", rationale: "", passed: false, current_value: "85.0%", threshold: "30%", severity: "breach", detail: "SOL is 85.0% of portfolio ($680,000) — exceeds 30% cap" },
+        { rule: "stablecoin_floor", name: "Stablecoin Minimum Floor", description: "", rationale: "", passed: false, current_value: "6.3%", threshold: "20%", severity: "breach", detail: "Stablecoins: $50,400 (6.3% of portfolio) — below 20% floor" },
+        { rule: "single_asset_cap", name: "Absolute Asset Value Cap", description: "", rationale: "", passed: false, current_value: "1 asset over cap", threshold: "$500,000", severity: "warning", detail: "Over cap: SOL: $680,000" },
+        { rule: "max_tx_size", name: "Transaction Size Limit", description: "", rationale: "", passed: true, current_value: "6 txs checked", threshold: "$100,000", severity: "breach", detail: "All 6 recent transactions within $100,000 cap" },
+        { rule: "inactivity_alert", name: "Activity Monitor", description: "", rationale: "", passed: true, current_value: "18h ago", threshold: "168h", severity: "warning", detail: "Last transaction: 18 hours ago" },
+      ],
+      recommendations: [
+        { rule: "allocation_cap", action: "Diversify by converting a portion of SOL into stablecoins or other assets.", severity: "breach" },
+        { rule: "stablecoin_floor", action: "Increase stablecoin holdings. Target USDC on Solana for maximum liquidity.", severity: "breach" },
+        { rule: "single_asset_cap", action: "Reduce SOL position size to stay within the $500,000 absolute cap.", severity: "warning" },
+      ],
+      ai_analysis: null,
+    },
+  },
 ];
 
 // --- Main Component ---
 
 export default function Home() {
+  const [chain, setChain] = useState<Chain>("ethereum");
   const [safeAddress, setSafeAddress] = useState("");
   const [ruleValues, setRuleValues] = useState<Record<string, number>>(
     Object.fromEntries(RULE_CONFIGS.map((r) => [r.type, r.defaultValue]))
@@ -298,6 +365,7 @@ export default function Home() {
           safe_address: safeAddress,
           rules,
           include_ai: true,
+          chain,
         }),
       });
 
@@ -320,6 +388,7 @@ export default function Home() {
     setActiveScenario(scenario.id);
     setReport(scenario.report);
     setError(null);
+    if (scenario.chain) setChain(scenario.chain);
   }
 
   return (
@@ -345,9 +414,12 @@ export default function Home() {
           <div className="text-center mb-10">
             <h2 className="text-2xl md:text-3xl font-bold mb-3">Try It Now</h2>
             <p className="text-gray-400 text-sm">
-              Paste any Safe wallet address or explore the example scenarios below
+              Paste any Ethereum or Solana wallet address, or explore the example scenarios
             </p>
           </div>
+
+          {/* Chain Selector */}
+          <ChainSelector chain={chain} onChange={(c) => { setChain(c); setSafeAddress(""); }} />
 
           {/* Scenario Gallery */}
           <ScenarioGallery
@@ -378,11 +450,11 @@ export default function Home() {
           <form onSubmit={handleSubmit} className="space-y-4 mb-8">
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-300">
-                Safe Wallet Address
+                {chain === "ethereum" ? "Safe Wallet Address" : "Solana Wallet Address"}
               </label>
               <input
                 type="text"
-                placeholder="0x..."
+                placeholder={CHAIN_CONFIG[chain].placeholder}
                 value={safeAddress}
                 onChange={(e) => setSafeAddress(e.target.value)}
                 className="w-full px-4 py-2.5 bg-gray-900 border border-gray-700 rounded-lg
@@ -393,10 +465,10 @@ export default function Home() {
               />
               <button
                 type="button"
-                onClick={() => setSafeAddress(SAMPLE_SAFE)}
+                onClick={() => setSafeAddress(SAMPLE_ADDRESSES[chain])}
                 className="mt-1.5 text-xs text-blue-400 hover:text-blue-300 transition"
               >
-                Try a sample address
+                Try a sample {CHAIN_CONFIG[chain].name} address
               </button>
             </div>
 
@@ -426,6 +498,7 @@ export default function Home() {
               {report.recommendations && report.recommendations.length > 0 && (
                 <RecommendationPanel recommendations={report.recommendations} />
               )}
+              <PostAuditCTA />
             </>
           )}
         </div>
@@ -462,8 +535,8 @@ function HeroSection() {
             </h1>
 
             <p className="animate-fade-in-up-delay-2 text-gray-400 text-lg md:text-xl max-w-xl mb-8 leading-relaxed mx-auto lg:mx-0">
-              Paste any Safe wallet address. Get an instant compliance audit
-              with AI-powered risk analysis — in 30 seconds.
+              Paste any Ethereum or Solana wallet address. Get an instant
+              compliance audit with AI-powered risk analysis — in 30 seconds.
             </p>
 
             <div className="animate-fade-in-up-delay-3 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 mb-10">
@@ -645,9 +718,9 @@ function HowItWorksSection() {
   const steps = [
     {
       number: "1",
-      title: "Paste your Safe address",
+      title: "Paste your wallet address",
       detail:
-        "Works with any Safe wallet on Ethereum. No API keys, no setup, no signup.",
+        "Works with Ethereum Safe wallets and Solana wallets. No API keys, no setup, no signup.",
     },
     {
       number: "2",
@@ -783,6 +856,41 @@ function CredibilityStrip() {
 }
 
 function CTAFooter() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [message, setMessage] = useState("");
+  const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/waitlist/count`)
+      .then((r) => r.json())
+      .then((d) => setWaitlistCount(d.count))
+      .catch(() => {});
+  }, []);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setStatus("loading");
+    try {
+      const res = await fetch(`${API_URL}/waitlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, source: "cta_footer" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStatus("success");
+        setMessage(data.message);
+        if (data.is_new && waitlistCount !== null) setWaitlistCount(waitlistCount + 1);
+      } else {
+        throw new Error(data.detail || "Failed");
+      }
+    } catch {
+      setStatus("error");
+      setMessage("Something went wrong. Please try again.");
+    }
+  }
+
   return (
     <section className="py-16 md:py-24 px-6 md:px-12 bg-gray-950/50">
       <div className="max-w-2xl mx-auto text-center">
@@ -794,20 +902,137 @@ function CTAFooter() {
           treasuries with real-time alerts, scheduled audits, and multi-chain
           support.
         </p>
-        <a
-          href="https://x.com/AegisAudit"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-block px-8 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg
-                     font-semibold transition text-sm shadow-lg shadow-blue-600/20"
-        >
-          Get Early Access
-        </a>
+
+        {waitlistCount !== null && waitlistCount > 0 && (
+          <p className="text-xs text-gray-500 mb-4">
+            <span className="text-blue-400 font-semibold">{waitlistCount}</span> teams already on the waitlist
+          </p>
+        )}
+
+        {status === "success" ? (
+          <div className="p-4 bg-green-900/20 border border-green-800 rounded-lg max-w-md mx-auto">
+            <p className="text-green-300 text-sm">{message}</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+            <input
+              type="email"
+              required
+              placeholder="your@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="flex-1 px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg
+                         text-white placeholder-gray-500 text-sm
+                         focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={status === "loading"}
+              className="px-8 py-3 bg-blue-600 hover:bg-blue-700
+                         disabled:bg-gray-800 disabled:text-gray-500
+                         rounded-lg font-semibold transition text-sm
+                         shadow-lg shadow-blue-600/20"
+            >
+              {status === "loading" ? "Joining..." : "Get Early Access"}
+            </button>
+          </form>
+        )}
+
+        {status === "error" && (
+          <p className="text-red-400 text-xs mt-2">{message}</p>
+        )}
+
         <p className="mt-10 text-xs text-gray-600">
           Built by Arlen Rios
         </p>
       </div>
     </section>
+  );
+}
+
+function ChainSelector({ chain, onChange }: { chain: Chain; onChange: (c: Chain) => void }) {
+  return (
+    <div className="flex gap-2 mb-6">
+      {(["ethereum", "solana"] as Chain[]).map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onChange(c)}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition border ${
+            chain === c
+              ? "bg-blue-600/20 border-blue-500 text-blue-300"
+              : "bg-gray-900/50 border-gray-800 text-gray-500 hover:border-gray-700"
+          }`}
+        >
+          {CHAIN_CONFIG[c].name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PostAuditCTA() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [message, setMessage] = useState("");
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setStatus("loading");
+    try {
+      const res = await fetch(`${API_URL}/waitlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, source: "post_audit" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStatus("success");
+        setMessage(data.message);
+      } else {
+        throw new Error(data.detail || "Failed");
+      }
+    } catch {
+      setStatus("error");
+      setMessage("Something went wrong.");
+    }
+  }
+
+  if (status === "success") {
+    return (
+      <div className="mt-6 p-4 bg-green-900/20 border border-green-800 rounded-lg text-center">
+        <p className="text-green-300 text-sm">{message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 p-4 bg-blue-900/10 border border-blue-800/30 rounded-lg text-center">
+      <p className="text-sm text-gray-300 mb-3">
+        Want automated monitoring with real-time alerts for this treasury?
+      </p>
+      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2 max-w-sm mx-auto">
+        <input
+          type="email"
+          required
+          placeholder="your@email.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg
+                     text-white placeholder-gray-500 text-xs
+                     focus:outline-none focus:border-blue-500"
+        />
+        <button
+          type="submit"
+          disabled={status === "loading"}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg
+                     font-medium text-xs transition disabled:bg-gray-800"
+        >
+          {status === "loading" ? "..." : "Notify Me"}
+        </button>
+      </form>
+      {status === "error" && <p className="text-red-400 text-xs mt-1">{message}</p>}
+    </div>
   );
 }
 
@@ -830,7 +1055,7 @@ function ScenarioGallery({
           See what different risk profiles look like
         </span>
       </h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
         {scenarios.map((s) => (
           <button
             key={s.id}
@@ -841,17 +1066,24 @@ function ScenarioGallery({
                 : "border-gray-800 bg-gray-900/50 hover:border-gray-700"
             }`}
           >
-            <span
-              className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium mb-1.5 ${
-                s.tagColor === "green"
-                  ? "bg-green-900 text-green-300"
-                  : s.tagColor === "red"
-                  ? "bg-red-900 text-red-300"
-                  : "bg-yellow-900 text-yellow-300"
-              }`}
-            >
-              {s.tag}
-            </span>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span
+                className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  s.tagColor === "green"
+                    ? "bg-green-900 text-green-300"
+                    : s.tagColor === "red"
+                    ? "bg-red-900 text-red-300"
+                    : "bg-yellow-900 text-yellow-300"
+                }`}
+              >
+                {s.tag}
+              </span>
+              {s.chain === "solana" && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-900/50 text-purple-300">
+                  SOL
+                </span>
+              )}
+            </div>
             <p className="font-medium text-gray-200 text-sm">{s.title}</p>
             <p className="text-gray-500 mt-0.5">{s.subtitle}</p>
           </button>
