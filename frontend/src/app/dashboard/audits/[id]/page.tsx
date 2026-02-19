@@ -7,6 +7,7 @@ import Link from "next/link";
 import ReportCard from "../../../components/report/ReportCard";
 import AIAnalysisPanel from "../../../components/report/AIAnalysisPanel";
 import RecommendationPanel from "../../../components/report/RecommendationPanel";
+import { downloadAuditPDF } from "../../../components/utils";
 import type { ComplianceReport } from "../../../components/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -33,6 +34,7 @@ export default function AuditDetailPage() {
   const [audit, setAudit] = useState<AuditDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     async function fetchAudit() {
@@ -81,6 +83,18 @@ export default function AuditDetailPage() {
         </Link>
       </div>
     );
+  }
+
+  async function handleDownloadPDF() {
+    if (!audit) return;
+    setPdfLoading(true);
+    try {
+      await downloadAuditPDF(audit.report_json, audit.chain as "ethereum" | "solana");
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+    } finally {
+      setPdfLoading(false);
+    }
   }
 
   const report = audit.report_json;
@@ -140,7 +154,7 @@ export default function AuditDetailPage() {
       </div>
 
       {/* Report */}
-      <ReportCard report={report} />
+      <ReportCard report={report} onDownloadPDF={handleDownloadPDF} pdfLoading={pdfLoading} />
 
       {/* AI Analysis */}
       {report.ai_analysis && (

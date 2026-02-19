@@ -25,6 +25,9 @@ export default function HistoryPage() {
   const [audits, setAudits] = useState<AuditHistorySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [chainFilter, setChainFilter] = useState<string>("all");
+  const [riskFilter, setRiskFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => setMounted(true), []);
 
@@ -49,8 +52,19 @@ export default function HistoryPage() {
     fetchHistory();
   }, [session]);
 
+  // Derive unique chains for filter dropdown
+  const chains = [...new Set(audits.map((a) => a.chain))].sort();
+
+  // Apply filters
+  const filtered = audits.filter((a) => {
+    if (chainFilter !== "all" && a.chain !== chainFilter) return false;
+    if (riskFilter !== "all" && a.risk_level !== riskFilter) return false;
+    if (statusFilter !== "all" && a.overall_status !== statusFilter) return false;
+    return true;
+  });
+
   // Chart data — oldest first
-  const chartData = [...audits]
+  const chartData = [...filtered]
     .reverse()
     .map((a) => ({
       date: new Date(a.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
@@ -65,6 +79,52 @@ export default function HistoryPage() {
         <h1 className="text-2xl font-bold">Audit History</h1>
         <p className="text-gray-400 text-sm mt-1">All compliance audits across your wallets</p>
       </div>
+
+      {/* Filters */}
+      {audits.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <select
+            value={chainFilter}
+            onChange={(e) => setChainFilter(e.target.value)}
+            className="px-3 py-1.5 bg-gray-900 border border-gray-800 rounded-lg text-xs text-gray-300
+                       focus:outline-none focus:border-blue-500 min-h-[36px]"
+          >
+            <option value="all">All chains</option>
+            {chains.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-1.5 bg-gray-900 border border-gray-800 rounded-lg text-xs text-gray-300
+                       focus:outline-none focus:border-blue-500 min-h-[36px]"
+          >
+            <option value="all">All statuses</option>
+            <option value="COMPLIANT">Compliant</option>
+            <option value="NON-COMPLIANT">Non-Compliant</option>
+          </select>
+          <select
+            value={riskFilter}
+            onChange={(e) => setRiskFilter(e.target.value)}
+            className="px-3 py-1.5 bg-gray-900 border border-gray-800 rounded-lg text-xs text-gray-300
+                       focus:outline-none focus:border-blue-500 min-h-[36px]"
+          >
+            <option value="all">All risk levels</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+          {(chainFilter !== "all" || statusFilter !== "all" || riskFilter !== "all") && (
+            <button
+              onClick={() => { setChainFilter("all"); setStatusFilter("all"); setRiskFilter("all"); }}
+              className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-300 transition min-h-[36px]"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Trend Charts */}
       {showCharts && (
@@ -127,15 +187,19 @@ export default function HistoryPage() {
             <div key={i} className="skeleton h-16 rounded-lg" />
           ))}
         </div>
-      ) : audits.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="bg-gray-900/50 border border-gray-800 border-dashed rounded-lg p-8 text-center">
-          <p className="text-gray-500 text-sm">No audits yet. Add a wallet and run your first audit.</p>
+          <p className="text-gray-500 text-sm">
+            {audits.length === 0
+              ? "No audits yet. Add a wallet and run your first audit."
+              : "No audits match your filters."}
+          </p>
         </div>
       ) : (
         <>
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
-            {audits.map((audit) => (
+            {filtered.map((audit) => (
               <div
                 key={audit.id}
                 onClick={() => router.push(`/dashboard/audits/${audit.id}`)}
@@ -191,7 +255,7 @@ export default function HistoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {audits.map((audit) => (
+                {filtered.map((audit) => (
                   <tr
                     key={audit.id}
                     onClick={() => router.push(`/dashboard/audits/${audit.id}`)}
