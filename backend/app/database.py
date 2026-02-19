@@ -133,6 +133,30 @@ async def init_db():
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_wallets_client ON wallets (client_id)
             """)
+            # --- Schedule columns on wallets ---
+            try:
+                await conn.execute("""
+                    ALTER TABLE wallets ADD COLUMN IF NOT EXISTS schedule_frequency TEXT
+                """)
+                await conn.execute("""
+                    ALTER TABLE wallets ADD COLUMN IF NOT EXISTS schedule_include_ai BOOLEAN NOT NULL DEFAULT FALSE
+                """)
+                await conn.execute("""
+                    ALTER TABLE wallets ADD COLUMN IF NOT EXISTS next_audit_at TIMESTAMPTZ
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_wallets_next_audit
+                        ON wallets (next_audit_at) WHERE next_audit_at IS NOT NULL
+                """)
+            except Exception:
+                pass
+            # --- Trigger column on audit_history ---
+            try:
+                await conn.execute("""
+                    ALTER TABLE audit_history ADD COLUMN IF NOT EXISTS trigger TEXT NOT NULL DEFAULT 'manual'
+                """)
+            except Exception:
+                pass
             # Add optional user_id and client_id to audit_history
             try:
                 await conn.execute("""
@@ -539,6 +563,12 @@ async def user_can_access_client(user_id: int, client_id: int) -> bool:
         return False
 
 
+SCHEDULE_INTERVALS = {
+    "daily": "1 day",
+    "weekly": "7 days",
+    "monthly": "30 days",
+}
+
 # --- Wallet Management ---
 
 
@@ -552,7 +582,8 @@ async def create_wallet(
         row = await _pool.fetchrow(
             """INSERT INTO wallets (client_id, address, chain, label)
                VALUES ($1, $2, $3, $4)
-               RETURNING id, client_id, address, chain, label, last_audit_at, last_risk_level, created_at""",
+               RETURNING id, client_id, address, chain, label, last_audit_at, last_risk_level,
+                              schedule_frequency, schedule_include_ai, next_audit_at, created_at""",
             client_id,
             address.lower().strip(),
             chain,
@@ -572,7 +603,8 @@ async def get_wallets(client_id: int) -> list[dict]:
         return []
     try:
         rows = await _pool.fetch(
-            """SELECT id, client_id, address, chain, label, last_audit_at, last_risk_level, created_at
+            """SELECT id, client_id, address, chain, label, last_audit_at, last_risk_level,
+                      schedule_frequency, schedule_include_ai, next_audit_at, created_at
                  FROM wallets WHERE client_id = $1
                  ORDER BY created_at DESC""",
             client_id,
@@ -590,8 +622,9 @@ async def get_wallets_for_user(user_id: int) -> list[dict]:
     try:
         rows = await _pool.fetch(
             """SELECT w.id, w.client_id, w.address, w.chain, w.label,
-                      w.last_audit_at, w.last_risk_level, w.created_at,
-                      c.name as client_name
+                      w.last_audit_at, w.last_risk_level,
+                      w.schedule_frequency, w.schedule_include_ai, w.next_audit_at,
+                      w.created_at, c.name as client_name
                  FROM wallets w
                  JOIN clients c ON c.id = w.client_id
                 WHERE c.user_id = $1
@@ -611,7 +644,8 @@ async def get_wallet(wallet_id: int) -> dict | None:
         return None
     try:
         row = await _pool.fetchrow(
-            """SELECT id, client_id, address, chain, label, last_audit_at, last_risk_level, created_at
+            """SELECT id, client_id, address, chain, label, last_audit_at, last_risk_level,
+                      schedule_frequency, schedule_include_ai, next_audit_at, created_at
                  FROM wallets WHERE id = $1""",
             wallet_id,
         )
@@ -629,7 +663,8 @@ async def update_wallet(wallet_id: int, label: str) -> dict | None:
         row = await _pool.fetchrow(
             """UPDATE wallets SET label = $2
                WHERE id = $1
-               RETURNING id, client_id, address, chain, label, last_audit_at, last_risk_level, created_at""",
+               RETURNING id, client_id, address, chain, label, last_audit_at, last_risk_level,
+                              schedule_frequency, schedule_include_ai, next_audit_at, created_at""",
             wallet_id, label,
         )
         return dict(row) if row else None
@@ -665,6 +700,86 @@ async def update_wallet_audit(wallet_id: int, risk_level: str | None) -> None:
         )
     except Exception as e:
         logger.error(f"Wallet audit update failed: {e}")
+
+
+# --- Wallet Schedule Management ---
+
+
+async def update_wallet_schedule(
+    wallet_id: int, frequency: str | None, include_ai: bool = False
+) -> dict | None:
+    """Set or clear a wallet's audit schedule."""
+    if not _pool:
+        return None
+    try:
+        if frequency and frequency in SCHEDULE_INTERVALS:
+            interval = SCHEDULE_INTERVALS[frequency]
+            row = await _pool.fetchrow(
+                f"""UPDATE wallets
+                    SET schedule_frequency = $2,
+                        schedule_include_ai = $3,
+                        next_audit_at = NOW() + INTERVAL '{interval}'
+                    WHERE id = $1
+                    RETURNING id, client_id, address, chain, label, last_audit_at, last_risk_level,
+                              schedule_frequency, schedule_include_ai, next_audit_at, created_at""",
+                wallet_id, frequency, include_ai,
+            )
+        else:
+            row = await _pool.fetchrow(
+                """UPDATE wallets
+                   SET schedule_frequency = NULL,
+                       schedule_include_ai = FALSE,
+                       next_audit_at = NULL
+                   WHERE id = $1
+                   RETURNING id, client_id, address, chain, label, last_audit_at, last_risk_level,
+                             schedule_frequency, schedule_include_ai, next_audit_at, created_at""",
+                wallet_id,
+            )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Wallet schedule update failed: {e}")
+        return None
+
+
+async def get_wallets_due_for_audit() -> list[dict]:
+    """Get wallets whose scheduled audit is overdue (next_audit_at <= NOW())."""
+    if not _pool:
+        return []
+    try:
+        rows = await _pool.fetch(
+            """SELECT id, client_id, address, chain, label,
+                      schedule_frequency, schedule_include_ai, next_audit_at
+                 FROM wallets
+                WHERE schedule_frequency IS NOT NULL
+                  AND next_audit_at IS NOT NULL
+                  AND next_audit_at <= NOW()
+                ORDER BY next_audit_at ASC
+                LIMIT 10"""
+        )
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Due wallets query failed: {e}")
+        return []
+
+
+async def advance_wallet_schedule(
+    wallet_id: int, frequency: str, risk_level: str | None
+) -> None:
+    """Bump next_audit_at forward after a scheduled audit completes."""
+    if not _pool:
+        return
+    interval = SCHEDULE_INTERVALS.get(frequency, "1 day")
+    try:
+        await _pool.execute(
+            f"""UPDATE wallets
+                SET next_audit_at = NOW() + INTERVAL '{interval}',
+                    last_audit_at = NOW(),
+                    last_risk_level = $2
+                WHERE id = $1""",
+            wallet_id, risk_level,
+        )
+    except Exception as e:
+        logger.error(f"Advance schedule failed: {e}")
 
 
 # --- Dashboard Stats ---
@@ -758,7 +873,8 @@ async def get_waitlist_count() -> int:
 
 
 async def save_audit(
-    wallet_address: str, chain: str, report: dict, client_id: int | None = None
+    wallet_address: str, chain: str, report: dict,
+    client_id: int | None = None, trigger: str = "manual",
 ) -> int | None:
     """Persist an audit report. Returns the new row ID, or None if DB unavailable."""
     if not _pool:
@@ -772,8 +888,8 @@ async def save_audit(
         return await _pool.fetchval(
             """INSERT INTO audit_history
                    (wallet_address, chain, total_usd, overall_status,
-                    passed, failed, total_rules, risk_level, report_json, client_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+                    passed, failed, total_rules, risk_level, report_json, client_id, trigger)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
                RETURNING id""",
             wallet_address.lower().strip(),
             chain,
@@ -785,6 +901,7 @@ async def save_audit(
             risk_level,
             json.dumps(report),
             client_id,
+            trigger,
         )
     except Exception as e:
         logger.error(f"Audit save failed: {e}")

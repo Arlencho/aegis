@@ -144,13 +144,25 @@ export default function WalletsPage() {
                             {wallet.last_risk_level}
                           </span>
                         )}
+                        {wallet.schedule_frequency && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-400/10 text-emerald-400 font-medium">
+                            {wallet.schedule_frequency}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-gray-500 font-mono truncate">{wallet.address}</p>
-                      {wallet.last_audit_at && (
-                        <p className="text-[10px] text-gray-600 mt-1">
-                          Last audit: {new Date(wallet.last_audit_at).toLocaleDateString()}
-                        </p>
-                      )}
+                      <div className="flex items-center gap-3 mt-1">
+                        {wallet.last_audit_at && (
+                          <p className="text-[10px] text-gray-600">
+                            Last: {new Date(wallet.last_audit_at).toLocaleDateString()}
+                          </p>
+                        )}
+                        {wallet.next_audit_at && (
+                          <p className="text-[10px] text-gray-600">
+                            Next: {new Date(wallet.next_audit_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <button
                       onClick={() => handleDelete(wallet.id)}

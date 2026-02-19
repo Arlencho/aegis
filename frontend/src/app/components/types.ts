@@ -113,6 +113,9 @@ export interface Wallet {
   label: string | null;
   last_audit_at: string | null;
   last_risk_level: string | null;
+  schedule_frequency: "daily" | "weekly" | "monthly" | null;
+  schedule_include_ai: boolean;
+  next_audit_at: string | null;
   created_at: string;
 }
 

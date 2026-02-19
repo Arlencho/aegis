@@ -1,5 +1,6 @@
 """AEGIS API — Treasury Risk Audit with AI Analysis"""
 
+import asyncio
 import os
 import re
 import time
@@ -28,8 +29,9 @@ from .database import (
     create_client, get_clients, get_client, update_client, delete_client,
     user_can_access_client,
     create_wallet, get_wallets, get_wallets_for_user, get_wallet, update_wallet,
-    delete_wallet, update_wallet_audit, get_dashboard_stats,
+    delete_wallet, update_wallet_audit, update_wallet_schedule, get_dashboard_stats,
 )
+from .scheduler import scheduler_loop
 
 import yaml
 
@@ -106,7 +108,13 @@ def _get_user_id(user: dict) -> int:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    scheduler_task = asyncio.create_task(scheduler_loop())
     yield
+    scheduler_task.cancel()
+    try:
+        await scheduler_task
+    except asyncio.CancelledError:
+        pass
     await close_db()
 
 
@@ -185,6 +193,11 @@ class WalletUpdateRequest(BaseModel):
 class WalletAuditRequest(BaseModel):
     rules: list[RuleParam] | None = None
     include_ai: bool = True
+
+
+class WalletScheduleRequest(BaseModel):
+    frequency: str | None = None  # "daily", "weekly", "monthly", or null to disable
+    include_ai: bool = False
 
 
 class OrgCreateRequest(BaseModel):
@@ -526,6 +539,29 @@ async def delete_wallet_endpoint(
     return {"success": True}
 
 
+@app.patch("/wallets/{wallet_id}/schedule")
+async def schedule_wallet(
+    wallet_id: int,
+    request: WalletScheduleRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Set or clear a wallet's recurring audit schedule."""
+    user_id = _get_user_id(user)
+    wallet = await get_wallet(wallet_id)
+    if wallet is None:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    if not await user_can_access_client(user_id, wallet["client_id"]):
+        raise HTTPException(status_code=404, detail="Wallet not found")
+
+    if request.frequency and request.frequency not in ("daily", "weekly", "monthly"):
+        raise HTTPException(status_code=400, detail="Frequency must be 'daily', 'weekly', 'monthly', or null")
+
+    updated = await update_wallet_schedule(wallet_id, request.frequency, request.include_ai)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    return updated
+
+
 @app.post("/wallets/{wallet_id}/audit")
 async def audit_wallet(
     wallet_id: int,
@@ -570,7 +606,7 @@ async def audit_wallet(
     if request.include_ai:
         report["ai_analysis"] = await analyze_treasury(balances, report)
 
-    await save_audit(address, chain, report, client_id=wallet["client_id"])
+    await save_audit(address, chain, report, client_id=wallet["client_id"], trigger="manual")
 
     # Update wallet last audit info
     risk_level = None

@@ -142,16 +142,28 @@ export default function DashboardPage() {
                             {risk}
                           </span>
                         )}
+                        {wallet.schedule_frequency && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-400/10 text-emerald-400 font-medium">
+                            {wallet.schedule_frequency}
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-gray-600 font-mono mt-0.5 truncate">
                         {wallet.address}
                       </p>
                     </div>
-                    {wallet.last_audit_at && (
-                      <span className="text-[10px] text-gray-600 shrink-0">
-                        {new Date(wallet.last_audit_at).toLocaleDateString()}
-                      </span>
-                    )}
+                    <div className="text-right shrink-0">
+                      {wallet.last_audit_at && (
+                        <p className="text-[10px] text-gray-600">
+                          {new Date(wallet.last_audit_at).toLocaleDateString()}
+                        </p>
+                      )}
+                      {wallet.next_audit_at && (
+                        <p className="text-[10px] text-gray-600">
+                          Next: {new Date(wallet.next_audit_at).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 );
               })}

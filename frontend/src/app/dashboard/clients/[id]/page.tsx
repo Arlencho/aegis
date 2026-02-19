@@ -116,6 +116,22 @@ export default function ClientDetailPage() {
     }
   }
 
+  async function handleScheduleChange(walletId: number, frequency: string) {
+    try {
+      const res = await fetch(`${API_URL}/wallets/${walletId}/schedule`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          frequency: frequency || null,
+          include_ai: false,
+        }),
+      });
+      if (res.ok) await fetchData();
+    } catch {
+      // silently fail
+    }
+  }
+
   const riskColors: Record<string, string> = {
     low: "text-green-400 bg-green-400/10",
     medium: "text-yellow-400 bg-yellow-400/10",
@@ -279,9 +295,26 @@ export default function ClientDetailPage() {
                     Last audit: {new Date(wallet.last_audit_at).toLocaleDateString()}
                   </p>
                 )}
+                {wallet.next_audit_at && (
+                  <p className="text-[10px] text-gray-600">
+                    Next: {new Date(wallet.next_audit_at).toLocaleDateString()}
+                  </p>
+                )}
               </div>
 
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-2 shrink-0">
+                <select
+                  value={wallet.schedule_frequency || ""}
+                  onChange={(e) => handleScheduleChange(wallet.id, e.target.value)}
+                  className="px-2 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded
+                             text-gray-300 min-h-[36px] focus:outline-none focus:border-blue-500"
+                  title="Audit schedule"
+                >
+                  <option value="">Off</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
                 <button
                   onClick={() => handleAudit(wallet.id)}
                   disabled={auditing === wallet.id}
