@@ -23,16 +23,54 @@ interface ComplianceReport {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+const SAMPLE_SAFE = "0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52";
+
+const DEFAULT_POLICY = `treasury:
+  name: "Quick Audit"
+  safe_address: "0x0000000000000000000000000000000000000000"
+  chain: "ethereum"
+rules:
+  - type: allocation_cap
+    params:
+      max_percent: 30
+    severity: breach
+  - type: stablecoin_floor
+    params:
+      min_percent: 20
+      stablecoins: ["USDC", "USDT", "DAI"]
+    severity: breach
+  - type: single_asset_cap
+    params:
+      max_usd: 500000
+    severity: warning
+  - type: max_tx_size
+    params:
+      max_usd: 100000
+    severity: breach
+  - type: inactivity_alert
+    params:
+      threshold_hours: 168
+    severity: warning`;
+
+const RULE_DESCRIPTIONS: Record<string, string> = {
+  allocation_cap: "No single token exceeds 30% of the portfolio",
+  stablecoin_floor: "At least 20% of holdings are stablecoins (USDC, USDT, DAI)",
+  single_asset_cap: "No single asset exceeds $500k in value",
+  max_tx_size: "No single transaction exceeds $100k",
+  inactivity_alert: "Treasury has had activity within the last 7 days",
+};
+
 export default function Home() {
   const [safeAddress, setSafeAddress] = useState("");
-  const [policyFile, setPolicyFile] = useState<File | null>(null);
+  const [customPolicyFile, setCustomPolicyFile] = useState<File | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [report, setReport] = useState<ComplianceReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!safeAddress || !policyFile) return;
+    if (!safeAddress) return;
 
     setLoading(true);
     setError(null);
@@ -40,7 +78,13 @@ export default function Home() {
 
     const formData = new FormData();
     formData.append("safe_address", safeAddress);
-    formData.append("policy_file", policyFile);
+
+    if (showAdvanced && customPolicyFile) {
+      formData.append("policy_file", customPolicyFile);
+    } else {
+      const blob = new Blob([DEFAULT_POLICY], { type: "application/x-yaml" });
+      formData.append("policy_file", blob, "policy.yaml");
+    }
 
     try {
       const res = await fetch(`${API_URL}/validate`, {
@@ -67,9 +111,13 @@ export default function Home() {
     <main className="min-h-screen p-6 md:p-12">
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold mb-1 tracking-tight">AEGIS</h1>
-        <p className="text-gray-400 mb-8 text-sm">
-          Deterministic policy enforcement for DAO treasuries. Paste a Gnosis
-          Safe address, upload your policy YAML, and get a compliance report.
+        <p className="text-gray-400 mb-2 text-sm">
+          See if your treasury is within risk limits — in 30 seconds.
+        </p>
+        <p className="text-gray-500 mb-8 text-xs leading-relaxed">
+          Paste any Gnosis Safe address and get an instant compliance report.
+          We check 5 rules: single-token concentration, stablecoin minimums,
+          asset caps, transaction size limits, and activity monitoring.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4 mb-8">
@@ -88,35 +136,56 @@ export default function Home() {
                          font-mono text-sm"
               required
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">
-              Policy YAML
-            </label>
-            <input
-              type="file"
-              accept=".yaml,.yml"
-              onChange={(e) => setPolicyFile(e.target.files?.[0] || null)}
-              className="w-full text-gray-400 text-sm
-                         file:mr-4 file:py-2 file:px-4
-                         file:rounded-lg file:border-0
-                         file:bg-gray-800 file:text-gray-200
-                         file:cursor-pointer file:text-sm
-                         hover:file:bg-gray-700"
-              required
-            />
+            <button
+              type="button"
+              onClick={() => setSafeAddress(SAMPLE_SAFE)}
+              className="mt-1.5 text-xs text-blue-400 hover:text-blue-300 transition"
+            >
+              Try a sample address
+            </button>
           </div>
 
           <button
             type="submit"
-            disabled={loading || !safeAddress || !policyFile}
+            disabled={loading || !safeAddress}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700
                        disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed
                        rounded-lg font-medium transition text-sm"
           >
-            {loading ? "Validating..." : "Run Compliance Check"}
+            {loading ? "Auditing..." : "Run Free Audit"}
           </button>
+
+          {/* Advanced: Custom Policy Upload */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-xs text-gray-500 hover:text-gray-400 transition flex items-center gap-1"
+            >
+              <span className={`transition-transform inline-block ${showAdvanced ? "rotate-90" : ""}`}>
+                &#9654;
+              </span>
+              Advanced: Upload custom policy
+            </button>
+            {showAdvanced && (
+              <div className="mt-3 p-3 bg-gray-900/50 border border-gray-800 rounded-lg">
+                <p className="text-xs text-gray-500 mb-2">
+                  Override the default 5-rule policy with your own YAML file.
+                </p>
+                <input
+                  type="file"
+                  accept=".yaml,.yml"
+                  onChange={(e) => setCustomPolicyFile(e.target.files?.[0] || null)}
+                  className="w-full text-gray-400 text-sm
+                             file:mr-4 file:py-2 file:px-4
+                             file:rounded-lg file:border-0
+                             file:bg-gray-800 file:text-gray-200
+                             file:cursor-pointer file:text-sm
+                             hover:file:bg-gray-700"
+                />
+              </div>
+            )}
+          </div>
         </form>
 
         {error && (
@@ -211,7 +280,12 @@ function ReportCard({ report }: { report: ComplianceReport }) {
               {result.current_value} / {result.threshold}
             </span>
           </div>
-          <p className="text-xs text-gray-400 mt-1">{result.detail}</p>
+          {RULE_DESCRIPTIONS[result.rule] && (
+            <p className="text-xs text-gray-500 mt-1">
+              {RULE_DESCRIPTIONS[result.rule]}
+            </p>
+          )}
+          <p className="text-xs text-gray-400 mt-0.5">{result.detail}</p>
         </div>
       ))}
     </div>
