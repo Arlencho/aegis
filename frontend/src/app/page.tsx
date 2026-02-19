@@ -1,6 +1,15 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 // --- Type Definitions ---
 
@@ -46,6 +55,18 @@ interface ComplianceReport {
   results: RuleResult[];
   recommendations: Recommendation[];
   ai_analysis: AIAnalysis | null;
+}
+
+interface AuditHistorySummary {
+  id: number;
+  chain: string;
+  total_usd: number;
+  overall_status: string;
+  passed: number;
+  failed: number;
+  total_rules: number;
+  risk_level: string | null;
+  created_at: string;
 }
 
 // --- Constants ---
@@ -325,6 +346,174 @@ const SCENARIOS: Scenario[] = [
   },
 ];
 
+// --- PDF Generation ---
+
+async function downloadAuditPDF(report: ComplianceReport, chain: Chain) {
+  const { Document, Page, Text, View, StyleSheet, pdf } = await import(
+    "@react-pdf/renderer"
+  );
+
+  const s = StyleSheet.create({
+    page: { padding: 40, fontSize: 10, fontFamily: "Helvetica", color: "#1f2937" },
+    header: { marginBottom: 20, borderBottomWidth: 2, borderBottomColor: "#3b82f6", paddingBottom: 10 },
+    title: { fontSize: 20, fontFamily: "Helvetica-Bold", color: "#111827" },
+    subtitle: { fontSize: 9, color: "#6b7280", marginTop: 4 },
+    sectionTitle: {
+      fontSize: 12, fontFamily: "Helvetica-Bold", color: "#111827",
+      marginTop: 16, marginBottom: 8, paddingBottom: 4,
+      borderBottomWidth: 1, borderBottomColor: "#e5e7eb",
+    },
+    summaryBox: { backgroundColor: "#f9fafb", padding: 12, borderRadius: 4 },
+    summaryRow: { flexDirection: "row" as const, justifyContent: "space-between" as const, marginBottom: 4 },
+    label: { color: "#6b7280", fontSize: 9 },
+    value: { fontFamily: "Helvetica-Bold", fontSize: 10 },
+    green: { color: "#16a34a" },
+    red: { color: "#dc2626" },
+    ruleRow: { flexDirection: "row" as const, paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: "#f3f4f6" },
+    ruleStatus: { width: 36, fontSize: 8, fontFamily: "Helvetica-Bold" },
+    ruleName: { flex: 1, fontSize: 9, fontFamily: "Helvetica-Bold", color: "#374151" },
+    ruleValues: { width: 90, fontSize: 8, color: "#6b7280", textAlign: "right" as const },
+    ruleDetail: { marginLeft: 36, fontSize: 8, color: "#9ca3af", marginTop: 2, marginBottom: 4 },
+    aiBox: { backgroundColor: "#faf5ff", padding: 12, borderRadius: 4, borderLeftWidth: 3, borderLeftColor: "#a855f7" },
+    bodyText: { fontSize: 9, color: "#4b5563", lineHeight: 1.5 },
+    recRow: { flexDirection: "row" as const, marginBottom: 4 },
+    recNum: { width: 16, fontSize: 9, color: "#3b82f6", fontFamily: "Helvetica-Bold" },
+    recText: { flex: 1, fontSize: 9, color: "#4b5563" },
+    footer: {
+      position: "absolute" as const, bottom: 30, left: 40, right: 40,
+      borderTopWidth: 1, borderTopColor: "#e5e7eb", paddingTop: 8,
+      flexDirection: "row" as const, justifyContent: "space-between" as const,
+    },
+    footerText: { fontSize: 7, color: "#9ca3af" },
+  });
+
+  const compliant = report.overall_status === "COMPLIANT";
+  const riskLevel = report.ai_analysis?.risk_level || "N/A";
+  const now = new Date();
+
+  const doc = (
+    <Document>
+      <Page size="A4" style={s.page}>
+        <View style={s.header}>
+          <Text style={s.title}>AEGIS Treasury Audit Report</Text>
+          <Text style={s.subtitle}>Deterministic Policy Validation + AI Risk Analysis</Text>
+        </View>
+
+        <Text style={s.sectionTitle}>Executive Summary</Text>
+        <View style={s.summaryBox}>
+          <View style={s.summaryRow}>
+            <Text style={s.label}>Wallet Address</Text>
+            <Text style={s.value}>{report.safe_address}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.label}>Chain</Text>
+            <Text style={s.value}>{chain === "ethereum" ? "Ethereum" : "Solana"}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.label}>Total Portfolio Value</Text>
+            <Text style={s.value}>
+              ${report.total_usd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.label}>Compliance Status</Text>
+            <Text style={[s.value, compliant ? s.green : s.red]}>{report.overall_status}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.label}>Rules Passed</Text>
+            <Text style={s.value}>{report.passed} / {report.total_rules}</Text>
+          </View>
+          <View style={s.summaryRow}>
+            <Text style={s.label}>AI Risk Level</Text>
+            <Text style={s.value}>{riskLevel.toUpperCase()}</Text>
+          </View>
+        </View>
+
+        <Text style={s.sectionTitle}>Compliance Results</Text>
+        {report.results.map((r, i) => (
+          <View key={i} wrap={false}>
+            <View style={s.ruleRow}>
+              <Text style={[s.ruleStatus, r.passed ? s.green : s.red]}>
+                {r.passed ? "PASS" : "FAIL"}
+              </Text>
+              <Text style={s.ruleName}>{r.name || r.rule}</Text>
+              <Text style={s.ruleValues}>{r.current_value} / {r.threshold}</Text>
+            </View>
+            <Text style={s.ruleDetail}>{r.detail}</Text>
+          </View>
+        ))}
+
+        {report.ai_analysis && (
+          <>
+            <Text style={s.sectionTitle}>AI Risk Analysis</Text>
+            <View style={s.aiBox}>
+              <Text style={s.bodyText}>{report.ai_analysis.summary}</Text>
+            </View>
+
+            {report.ai_analysis.stress_test && (
+              <>
+                <Text style={{ ...s.sectionTitle, fontSize: 10 }}>Stress Test</Text>
+                <Text style={s.bodyText}>{report.ai_analysis.stress_test}</Text>
+              </>
+            )}
+
+            {report.ai_analysis.benchmarks && (
+              <>
+                <Text style={{ ...s.sectionTitle, fontSize: 10 }}>Industry Benchmarks</Text>
+                <Text style={s.bodyText}>{report.ai_analysis.benchmarks}</Text>
+              </>
+            )}
+
+            {report.ai_analysis.recommendations?.length > 0 && (
+              <>
+                <Text style={{ ...s.sectionTitle, fontSize: 10 }}>AI Recommendations</Text>
+                {report.ai_analysis.recommendations.map((rec, i) => (
+                  <View key={i} style={s.recRow}>
+                    <Text style={s.recNum}>{i + 1}.</Text>
+                    <Text style={s.recText}>{rec}</Text>
+                  </View>
+                ))}
+              </>
+            )}
+          </>
+        )}
+
+        {report.recommendations?.length > 0 && (
+          <>
+            <Text style={s.sectionTitle}>Action Items</Text>
+            {report.recommendations.map((rec, i) => (
+              <View key={i} style={s.recRow}>
+                <Text
+                  style={[s.recNum, { color: rec.severity === "breach" ? "#dc2626" : "#ca8a04" }]}
+                >
+                  {rec.severity === "breach" ? "FIX" : "REV"}
+                </Text>
+                <Text style={s.recText}>[{rec.rule}] {rec.action}</Text>
+              </View>
+            ))}
+          </>
+        )}
+
+        <View style={s.footer} fixed>
+          <Text style={s.footerText}>Generated by AEGIS | aegis.rios.xyz</Text>
+          <Text style={s.footerText}>Point-in-time audit | {now.toLocaleString()}</Text>
+        </View>
+      </Page>
+    </Document>
+  );
+
+  const blob = await pdf(doc).toBlob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  const prefix = report.safe_address.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
+  link.download = `aegis-audit-${prefix}-${now.toISOString().split("T")[0]}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 // --- Main Component ---
 
 export default function Home() {
@@ -337,6 +526,31 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeScenario, setActiveScenario] = useState<string | null>(null);
+  const [auditHistory, setAuditHistory] = useState<AuditHistorySummary[]>([]);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  // Fetch audit history when a live report comes in
+  useEffect(() => {
+    if (!report || activeScenario) return; // skip for demo scenarios
+    const addr = report.safe_address;
+    if (!addr || addr.includes("(example)")) return;
+    fetch(`${API_URL}/audits/${encodeURIComponent(addr)}`)
+      .then((r) => r.json())
+      .then((d) => setAuditHistory(d.audits || []))
+      .catch(() => setAuditHistory([]));
+  }, [report, activeScenario]);
+
+  async function handleDownloadPDF() {
+    if (!report) return;
+    setPdfLoading(true);
+    try {
+      await downloadAuditPDF(report, chain);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+    } finally {
+      setPdfLoading(false);
+    }
+  }
 
   function updateRuleValue(ruleType: string, value: number) {
     setRuleValues((prev) => ({ ...prev, [ruleType]: value }));
@@ -405,7 +619,10 @@ export default function Home() {
       {/* Section 4: What AEGIS Checks */}
       <FeaturesSection />
 
-      {/* Section 5: Credibility Strip */}
+      {/* Section 5: Manual vs AEGIS */}
+      <ComparisonSection />
+
+      {/* Section 6: Credibility Strip */}
       <CredibilityStrip />
 
       {/* Section 6: Interactive Demo */}
@@ -491,12 +708,19 @@ export default function Home() {
 
           {report && (
             <>
-              <ReportCard report={report} />
+              <ReportCard
+                report={report}
+                onDownloadPDF={handleDownloadPDF}
+                pdfLoading={pdfLoading}
+              />
               {report.ai_analysis && (
                 <AIAnalysisPanel analysis={report.ai_analysis} />
               )}
               {report.recommendations && report.recommendations.length > 0 && (
                 <RecommendationPanel recommendations={report.recommendations} />
+              )}
+              {auditHistory.length > 1 && (
+                <AuditHistoryPanel history={auditHistory} />
               )}
               <PostAuditCTA />
             </>
@@ -855,6 +1079,113 @@ function CredibilityStrip() {
   );
 }
 
+function ComparisonSection() {
+  return (
+    <section className="py-16 md:py-24 px-6 md:px-12">
+      <div className="max-w-5xl mx-auto">
+        <h2 className="text-center text-2xl md:text-3xl font-bold mb-4">
+          Manual Review vs AEGIS
+        </h2>
+        <p className="text-center text-gray-500 text-sm mb-12 max-w-xl mx-auto">
+          Same treasury, two approaches — see what gets missed
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Manual Review */}
+          <div className="p-6 bg-gray-900 border border-gray-800 rounded-xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-yellow-500 to-amber-600" />
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-lg bg-yellow-900/30 border border-yellow-800/40 flex items-center justify-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-yellow-400">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="3" y1="9" x2="21" y2="9" />
+                  <line x1="3" y1="15" x2="21" y2="15" />
+                  <line x1="9" y1="3" x2="9" y2="21" />
+                  <line x1="15" y1="3" x2="15" y2="21" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-100">Manual Review</h3>
+                <p className="text-xs text-gray-500">Spreadsheet-based</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              {[
+                { text: "Takes 2-4 hours per audit", icon: "clock" },
+                { text: "Checks 1-2 rules at best", icon: "check" },
+                { text: "No stress testing", icon: "x" },
+                { text: "Results in a shared Google Doc", icon: "doc" },
+                { text: "Reviewed quarterly (if someone remembers)", icon: "cal" },
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-3 text-sm">
+                  <span className="text-yellow-500/60 shrink-0">&#9679;</span>
+                  <span className="text-gray-400">{item.text}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-3 bg-yellow-900/15 border border-yellow-800/30 rounded-lg text-center">
+              <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider">
+                &ldquo;Looks Fine&rdquo;
+              </span>
+              <p className="text-[10px] text-gray-500 mt-1">Missed 2 critical violations</p>
+            </div>
+          </div>
+
+          {/* AEGIS Audit */}
+          <div className="p-6 bg-gray-900 border border-blue-800/40 rounded-xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-purple-500" />
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-lg bg-blue-900/30 border border-blue-800/40 flex items-center justify-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-blue-400">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-100">AEGIS Audit</h3>
+                <p className="text-xs text-gray-500">AI-powered compliance</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              {[
+                "Takes 30 seconds, end to end",
+                "5 deterministic rules + AI analysis",
+                "Stress tests included (\"what if ETH drops 30%?\")",
+                "Professional PDF report for stakeholders",
+                "On-demand — run anytime, any wallet",
+              ].map((text, i) => (
+                <div key={i} className="flex items-center gap-3 text-sm">
+                  <span className="text-blue-400 shrink-0">&#10003;</span>
+                  <span className="text-gray-300">{text}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-3 bg-red-900/15 border border-red-800/30 rounded-lg text-center">
+              <span className="text-xs font-bold text-red-400 uppercase tracking-wider">
+                2 Violations Found
+              </span>
+              <p className="text-[10px] text-gray-400 mt-1">42% concentration + stablecoin floor breach</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Narrative */}
+        <div className="mt-8 text-center max-w-2xl mx-auto">
+          <p className="text-sm text-gray-400 leading-relaxed">
+            In this real scenario, a manual spreadsheet review concluded the treasury was
+            &ldquo;healthy.&rdquo; AEGIS found a <span className="text-red-400 font-medium">42% single-token concentration</span> and
+            a <span className="text-red-400 font-medium">stablecoin floor violation</span> — both
+            caught in under 30 seconds with deterministic policy checks.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CTAFooter() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -1036,6 +1367,131 @@ function PostAuditCTA() {
   );
 }
 
+// --- Audit History Panel ---
+
+function AuditHistoryPanel({ history }: { history: AuditHistorySummary[] }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Prepare chart data (oldest first for the line chart)
+  const chartData = [...history]
+    .reverse()
+    .map((a) => ({
+      date: new Date(a.created_at).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      }),
+      score: Math.round((a.passed / a.total_rules) * 100),
+      passed: a.passed,
+      total: a.total_rules,
+    }));
+
+  return (
+    <div className="mt-6 p-4 bg-gray-900/50 border border-gray-800 rounded-lg">
+      <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+        Audit History
+        <span className="text-[10px] px-1.5 py-0.5 bg-blue-900/50 text-blue-300 rounded">
+          {history.length} audits
+        </span>
+      </h3>
+
+      {/* Compliance Trend Chart */}
+      {mounted && chartData.length > 1 && (
+        <div className="mb-4">
+          <p className="text-xs text-gray-500 mb-2">Compliance Score Over Time</p>
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 10, fill: "#6b7280" }}
+                stroke="#374151"
+              />
+              <YAxis
+                domain={[0, 100]}
+                tick={{ fontSize: 10, fill: "#6b7280" }}
+                stroke="#374151"
+                tickFormatter={(v: number) => `${v}%`}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#111827",
+                  border: "1px solid #374151",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                }}
+                labelStyle={{ color: "#9ca3af" }}
+                formatter={(value) => [`${value}%`, "Compliance"]}
+              />
+              <Line
+                type="monotone"
+                dataKey="score"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={{ fill: "#3b82f6", r: 3 }}
+                activeDot={{ r: 5, fill: "#60a5fa" }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* History Table */}
+      <div className="space-y-1.5">
+        {history.slice(0, 10).map((audit) => (
+          <div
+            key={audit.id}
+            className="flex items-center justify-between py-2 px-3 bg-gray-800/30 rounded-lg text-xs"
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={`text-[10px] font-bold ${
+                  audit.overall_status === "COMPLIANT"
+                    ? "text-green-400"
+                    : "text-red-400"
+                }`}
+              >
+                {audit.overall_status === "COMPLIANT" ? "PASS" : "FAIL"}
+              </span>
+              <span className="text-gray-400">
+                {new Date(audit.created_at).toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-gray-500">
+                {audit.passed}/{audit.total_rules} rules
+              </span>
+              <span className="text-gray-500 font-mono">
+                ${Number(audit.total_usd).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </span>
+              {audit.risk_level && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded ${
+                    audit.risk_level === "low"
+                      ? "bg-green-900/50 text-green-300"
+                      : audit.risk_level === "medium"
+                      ? "bg-yellow-900/50 text-yellow-300"
+                      : audit.risk_level === "high"
+                      ? "bg-red-900/50 text-red-300"
+                      : "bg-gray-800 text-gray-400"
+                  }`}
+                >
+                  {audit.risk_level}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // --- Scenario Gallery ---
 
 function ScenarioGallery({
@@ -1170,7 +1626,15 @@ function RuleEditor({
 
 // --- Report Card ---
 
-function ReportCard({ report }: { report: ComplianceReport }) {
+function ReportCard({
+  report,
+  onDownloadPDF,
+  pdfLoading,
+}: {
+  report: ComplianceReport;
+  onDownloadPDF?: () => void;
+  pdfLoading?: boolean;
+}) {
   const compliant = report.overall_status === "COMPLIANT";
 
   return (
@@ -1208,6 +1672,24 @@ function ReportCard({ report }: { report: ComplianceReport }) {
             </p>
           </div>
         </div>
+        {onDownloadPDF && (
+          <button
+            type="button"
+            onClick={onDownloadPDF}
+            disabled={pdfLoading}
+            className="mt-3 w-full py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700
+                       rounded-lg text-xs font-medium text-gray-300 transition
+                       disabled:opacity-50 disabled:cursor-not-allowed
+                       flex items-center justify-center gap-2"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            {pdfLoading ? "Generating PDF..." : "Download PDF Report"}
+          </button>
+        )}
       </div>
 
       {/* Per-rule results */}

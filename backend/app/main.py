@@ -12,7 +12,11 @@ from .safe_reader import fetch_safe_balances, fetch_safe_transactions
 from .solana_reader import fetch_solana_balances, fetch_solana_transactions
 from .alerts import send_alerts
 from .ai_analysis import analyze_treasury
-from .database import init_db, close_db, add_to_waitlist, get_waitlist_count
+from .database import (
+    init_db, close_db,
+    add_to_waitlist, get_waitlist_count,
+    save_audit, get_audit_history, get_audit_detail,
+)
 
 import yaml
 
@@ -24,7 +28,7 @@ async def lifespan(app: FastAPI):
     await close_db()
 
 
-app = FastAPI(title="AEGIS", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="AEGIS", version="0.4.0", lifespan=lifespan)
 
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
@@ -65,7 +69,7 @@ class WaitlistResponse(BaseModel):
 
 @app.get("/")
 def root():
-    return {"service": "AEGIS", "version": "0.3.0", "docs": "/docs"}
+    return {"service": "AEGIS", "version": "0.4.0", "docs": "/docs"}
 
 
 @app.get("/health")
@@ -178,9 +182,30 @@ async def validate_json(request: ValidateRequest):
 
     report["ai_analysis"] = ai_analysis
 
+    # Persist audit (fire-and-forget — don't fail the response)
+    await save_audit(request.safe_address, request.chain, report)
+
     # Send alerts for failures
     failures = [r for r in report["results"] if not r["passed"]]
     if failures:
         await send_alerts(request.safe_address, failures, "Treasury Audit")
 
     return report
+
+
+# --- Audit History endpoints ---
+
+@app.get("/audits/{wallet_address}")
+async def audit_history(wallet_address: str, limit: int = 20):
+    """Return audit history for a wallet address."""
+    history = await get_audit_history(wallet_address, limit=min(limit, 100))
+    return {"wallet_address": wallet_address, "audits": history}
+
+
+@app.get("/audits/detail/{audit_id}")
+async def audit_detail(audit_id: int):
+    """Return a single audit with full report data."""
+    result = await get_audit_detail(audit_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Audit not found")
+    return result
