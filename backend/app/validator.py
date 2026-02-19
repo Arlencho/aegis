@@ -74,6 +74,20 @@ RULE_RECOMMENDATIONS = {
 }
 
 
+DEFAULT_RULES = [
+    {"type": "allocation_cap", "params": {"max_percentage": 30}, "severity": "breach"},
+    {"type": "stablecoin_floor", "params": {"min_percentage": 20}, "severity": "breach"},
+    {"type": "single_asset_cap", "params": {"max_usd": 500000}, "severity": "warning"},
+    {"type": "max_tx_size", "params": {"max_usd": 100000}, "severity": "warning"},
+    {"type": "inactivity_alert", "params": {"max_hours": 168}, "severity": "warning"},
+    {"type": "min_diversification", "params": {"min_tokens": 3}, "severity": "warning"},
+    {"type": "volatile_exposure", "params": {"max_percentage": 80}, "severity": "breach"},
+    {"type": "min_treasury_value", "params": {"min_usd": 100000}, "severity": "warning"},
+    {"type": "large_tx_ratio", "params": {"max_percentage": 15}, "severity": "warning"},
+    {"type": "concentration_hhi", "params": {"max_hhi": 3000}, "severity": "warning"},
+]
+
+
 def _enrich_result(result: dict) -> dict:
     """Add metadata (name, description, rationale) to a rule result."""
     meta = RULE_METADATA.get(result["rule"], {})

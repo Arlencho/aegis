@@ -56,6 +56,52 @@ async def init_db():
                 CREATE INDEX IF NOT EXISTS idx_audit_history_wallet
                     ON audit_history (wallet_address, created_at DESC)
             """)
+            # --- Users table (AEGIS Pro) ---
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id              SERIAL PRIMARY KEY,
+                    email           TEXT NOT NULL UNIQUE,
+                    name            TEXT,
+                    password_hash   TEXT,
+                    provider        TEXT NOT NULL DEFAULT 'credentials',
+                    plan            TEXT NOT NULL DEFAULT 'free',
+                    stripe_customer_id TEXT,
+                    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)
+            """)
+            # --- Wallets table (AEGIS Pro) ---
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS wallets (
+                    id              SERIAL PRIMARY KEY,
+                    user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    address         TEXT NOT NULL,
+                    chain           TEXT NOT NULL DEFAULT 'ethereum',
+                    label           TEXT,
+                    last_audit_at   TIMESTAMPTZ,
+                    last_risk_level TEXT,
+                    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE (user_id, address, chain)
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_wallets_user ON wallets (user_id)
+            """)
+            # Add optional user_id to audit_history
+            try:
+                await conn.execute("""
+                    ALTER TABLE audit_history
+                        ADD COLUMN IF NOT EXISTS user_id INT REFERENCES users(id) ON DELETE SET NULL
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_audit_history_user
+                        ON audit_history (user_id, created_at DESC)
+                """)
+            except Exception:
+                pass  # Column already exists
         logger.info("Database initialized, all tables ready")
     except Exception as e:
         logger.error(f"Database connection failed: {e} — DB features disabled")
@@ -68,6 +114,181 @@ async def close_db():
     if _pool:
         await _pool.close()
         _pool = None
+
+
+# --- User Management ---
+
+
+async def create_user(
+    email: str, name: str | None, password_hash: str | None, provider: str = "credentials"
+) -> dict | None:
+    """Create a new user. Returns user dict or None if DB unavailable."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """INSERT INTO users (email, name, password_hash, provider)
+               VALUES ($1, $2, $3, $4)
+               RETURNING id, email, name, provider, plan, created_at""",
+            email.lower().strip(),
+            name,
+            password_hash,
+            provider,
+        )
+        return dict(row) if row else None
+    except asyncpg.UniqueViolationError:
+        return None
+    except Exception as e:
+        logger.error(f"User creation failed: {e}")
+        return None
+
+
+async def get_user_by_email(email: str) -> dict | None:
+    """Fetch user by email. Returns full user dict including password_hash."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """SELECT id, email, name, password_hash, provider, plan,
+                      stripe_customer_id, created_at, updated_at
+                 FROM users WHERE email = $1""",
+            email.lower().strip(),
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"User lookup failed: {e}")
+        return None
+
+
+async def get_user_by_id(user_id: int) -> dict | None:
+    """Fetch user by ID. Returns user dict without password_hash."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """SELECT id, email, name, provider, plan,
+                      stripe_customer_id, created_at, updated_at
+                 FROM users WHERE id = $1""",
+            user_id,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"User lookup failed: {e}")
+        return None
+
+
+# --- Wallet Management ---
+
+
+async def create_wallet(
+    user_id: int, address: str, chain: str, label: str | None = None
+) -> dict | None:
+    """Save a wallet for a user. Returns wallet dict or None."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """INSERT INTO wallets (user_id, address, chain, label)
+               VALUES ($1, $2, $3, $4)
+               RETURNING id, user_id, address, chain, label, last_audit_at, last_risk_level, created_at""",
+            user_id,
+            address.lower().strip(),
+            chain,
+            label,
+        )
+        return dict(row) if row else None
+    except asyncpg.UniqueViolationError:
+        return None
+    except Exception as e:
+        logger.error(f"Wallet creation failed: {e}")
+        return None
+
+
+async def get_wallets(user_id: int) -> list[dict]:
+    """List all saved wallets for a user."""
+    if not _pool:
+        return []
+    try:
+        rows = await _pool.fetch(
+            """SELECT id, address, chain, label, last_audit_at, last_risk_level, created_at
+                 FROM wallets WHERE user_id = $1
+                 ORDER BY created_at DESC""",
+            user_id,
+        )
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Wallet list failed: {e}")
+        return []
+
+
+async def get_wallet(wallet_id: int, user_id: int) -> dict | None:
+    """Get a single wallet by ID, ensuring it belongs to the user."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """SELECT id, address, chain, label, last_audit_at, last_risk_level, created_at
+                 FROM wallets WHERE id = $1 AND user_id = $2""",
+            wallet_id,
+            user_id,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Wallet fetch failed: {e}")
+        return None
+
+
+async def update_wallet(wallet_id: int, user_id: int, label: str) -> dict | None:
+    """Update wallet label. Returns updated wallet or None."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """UPDATE wallets SET label = $3
+               WHERE id = $1 AND user_id = $2
+               RETURNING id, address, chain, label, last_audit_at, last_risk_level, created_at""",
+            wallet_id,
+            user_id,
+            label,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Wallet update failed: {e}")
+        return None
+
+
+async def delete_wallet(wallet_id: int, user_id: int) -> bool:
+    """Delete a wallet. Returns True if deleted."""
+    if not _pool:
+        return False
+    try:
+        result = await _pool.execute(
+            "DELETE FROM wallets WHERE id = $1 AND user_id = $2",
+            wallet_id,
+            user_id,
+        )
+        return result == "DELETE 1"
+    except Exception as e:
+        logger.error(f"Wallet delete failed: {e}")
+        return False
+
+
+async def update_wallet_audit(wallet_id: int, risk_level: str | None) -> None:
+    """Update a wallet's last_audit_at and risk_level after an audit."""
+    if not _pool:
+        return
+    try:
+        await _pool.execute(
+            """UPDATE wallets SET last_audit_at = NOW(), last_risk_level = $2
+               WHERE id = $1""",
+            wallet_id,
+            risk_level,
+        )
+    except Exception as e:
+        logger.error(f"Wallet audit update failed: {e}")
+
+
+# --- Waitlist ---
 
 
 async def add_to_waitlist(

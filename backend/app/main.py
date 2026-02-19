@@ -6,7 +6,8 @@ import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+import bcrypt
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -16,10 +17,14 @@ from .eth_reader import fetch_eoa_balances, fetch_eoa_transactions
 from .solana_reader import fetch_solana_balances, fetch_solana_transactions
 from .alerts import send_alerts
 from .ai_analysis import analyze_treasury
+from .auth import get_current_user, get_optional_user
 from .database import (
     init_db, close_db,
     add_to_waitlist, get_waitlist_count,
     save_audit, get_audit_history, get_audit_detail,
+    create_user, get_user_by_email, get_user_by_id,
+    create_wallet, get_wallets, get_wallet, update_wallet, delete_wallet,
+    update_wallet_audit,
 )
 
 import yaml
@@ -87,7 +92,7 @@ async def lifespan(app: FastAPI):
     await close_db()
 
 
-app = FastAPI(title="AEGIS", version="0.5.0", lifespan=lifespan)
+app = FastAPI(title="AEGIS", version="0.6.0", lifespan=lifespan)
 
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
@@ -126,14 +131,252 @@ class WaitlistResponse(BaseModel):
     is_new: bool
 
 
+class SignupRequest(BaseModel):
+    email: str
+    name: str | None = None
+    password: str
+
+
+class VerifyRequest(BaseModel):
+    email: str
+    password: str
+
+
+class WalletCreateRequest(BaseModel):
+    address: str
+    chain: str = "ethereum"
+    label: str | None = None
+
+
+class WalletUpdateRequest(BaseModel):
+    label: str
+
+
+class WalletAuditRequest(BaseModel):
+    rules: list[RuleParam] | None = None
+    include_ai: bool = True
+
+
 @app.get("/")
 def root():
-    return {"service": "AEGIS", "version": "0.5.0", "docs": "/docs"}
+    return {"service": "AEGIS", "version": "0.6.0", "docs": "/docs"}
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# --- Auth endpoints ---
+
+AUTH_RATE_LIMIT = 5  # Stricter rate limit for auth
+
+
+@app.post("/auth/signup")
+async def signup(request: SignupRequest, req: Request):
+    """Create a new user account."""
+    if not _check_rate_limit(req.client.host if req.client else "unknown"):
+        raise HTTPException(status_code=429, detail="Too many requests.")
+
+    if "@" not in request.email or "." not in request.email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+    if len(request.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    password_hash = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
+    user = await create_user(request.email, request.name, password_hash)
+
+    if user is None:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "plan": user["plan"],
+        "created_at": str(user["created_at"]),
+    }
+
+
+@app.post("/auth/verify")
+async def verify_credentials(request: VerifyRequest, req: Request):
+    """Verify email + password. Used by NextAuth credentials provider."""
+    if not _check_rate_limit(req.client.host if req.client else "unknown"):
+        raise HTTPException(status_code=429, detail="Too many requests.")
+
+    user = await get_user_by_email(request.email)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not user.get("password_hash"):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not bcrypt.checkpw(request.password.encode(), user["password_hash"].encode()):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "plan": user["plan"],
+    }
+
+
+@app.get("/users/me")
+async def get_me(user: dict = Depends(get_current_user)):
+    """Get current user profile (requires authentication)."""
+    db_user = await get_user_by_id(int(user.get("sub", user.get("id", 0))))
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "id": db_user["id"],
+        "email": db_user["email"],
+        "name": db_user["name"],
+        "plan": db_user["plan"],
+        "created_at": str(db_user["created_at"]),
+    }
+
+
+# --- Wallet endpoints (protected) ---
+
+@app.post("/wallets")
+async def create_wallet_endpoint(
+    request: WalletCreateRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Save a wallet to the user's account."""
+    user_id = int(user.get("sub", user.get("id", 0)))
+
+    # Validate address format
+    if request.chain == "solana":
+        if not _validate_solana_address(request.address):
+            raise HTTPException(status_code=400, detail="Invalid Solana address format.")
+    else:
+        if not _validate_eth_address(request.address):
+            raise HTTPException(status_code=400, detail="Invalid Ethereum address format.")
+
+    wallet = await create_wallet(user_id, request.address, request.chain, request.label)
+    if wallet is None:
+        raise HTTPException(status_code=409, detail="Wallet already saved")
+    return wallet
+
+
+@app.get("/wallets")
+async def list_wallets(user: dict = Depends(get_current_user)):
+    """List all saved wallets for the current user."""
+    user_id = int(user.get("sub", user.get("id", 0)))
+    wallets = await get_wallets(user_id)
+    return {"wallets": wallets}
+
+
+@app.patch("/wallets/{wallet_id}")
+async def update_wallet_endpoint(
+    wallet_id: int,
+    request: WalletUpdateRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Update a wallet's label."""
+    user_id = int(user.get("sub", user.get("id", 0)))
+    wallet = await update_wallet(wallet_id, user_id, request.label)
+    if wallet is None:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    return wallet
+
+
+@app.delete("/wallets/{wallet_id}")
+async def delete_wallet_endpoint(
+    wallet_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """Delete a saved wallet."""
+    user_id = int(user.get("sub", user.get("id", 0)))
+    deleted = await delete_wallet(wallet_id, user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    return {"success": True}
+
+
+@app.post("/wallets/{wallet_id}/audit")
+async def audit_wallet(
+    wallet_id: int,
+    request: WalletAuditRequest = WalletAuditRequest(),
+    user: dict = Depends(get_current_user),
+    req: Request = None,
+):
+    """Run an audit on a saved wallet."""
+    if req and not _check_rate_limit(req.client.host if req.client else "unknown"):
+        raise HTTPException(status_code=429, detail="Too many requests.")
+
+    user_id = int(user.get("sub", user.get("id", 0)))
+    wallet = await get_wallet(wallet_id, user_id)
+    if wallet is None:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+
+    address = wallet["address"]
+    chain = wallet["chain"]
+
+    # Use default rules if none provided
+    if request.rules:
+        rules = [r.model_dump() for r in request.rules]
+    else:
+        from .validator import DEFAULT_RULES
+        rules = DEFAULT_RULES
+
+    # Fetch balances
+    if chain == "solana":
+        balances = await fetch_solana_balances(address)
+        transactions = await fetch_solana_transactions(address, limit=10) if balances else None
+    else:
+        balances = await _fetch_eth_balances(address)
+        transactions = await _fetch_eth_transactions(address, limit=20) if balances else None
+
+    if balances is None:
+        raise HTTPException(status_code=404, detail=f"Could not fetch balances for {address}")
+
+    report = validate_policy(balances, rules, transactions=transactions)
+
+    if request.include_ai:
+        report["ai_analysis"] = await analyze_treasury(balances, report)
+
+    await save_audit(address, chain, report)
+
+    # Update wallet last audit info
+    risk_level = None
+    ai = report.get("ai_analysis")
+    if isinstance(ai, dict):
+        risk_level = ai.get("risk_level")
+    await update_wallet_audit(wallet_id, risk_level)
+
+    return report
+
+
+@app.get("/dashboard/history")
+async def dashboard_history(
+    user: dict = Depends(get_current_user),
+    limit: int = 50,
+    wallet_address: str | None = None,
+):
+    """Get audit history for the logged-in user's wallets."""
+    user_id = int(user.get("sub", user.get("id", 0)))
+    # Get user's wallet addresses
+    wallets = await get_wallets(user_id)
+    if not wallets:
+        return {"audits": []}
+
+    if wallet_address:
+        addresses = [wallet_address.lower().strip()]
+    else:
+        addresses = [w["address"] for w in wallets]
+
+    # Aggregate audit history across all user wallets
+    all_audits = []
+    for addr in addresses:
+        audits = await get_audit_history(addr, limit=min(limit, 100))
+        all_audits.extend(audits)
+
+    # Sort by created_at desc and limit
+    all_audits.sort(key=lambda a: a.get("created_at", ""), reverse=True)
+    return {"audits": all_audits[:limit]}
 
 
 # --- Waitlist endpoints ---

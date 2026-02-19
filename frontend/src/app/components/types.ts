@@ -69,6 +69,24 @@ export interface RuleConfig {
   severity: "breach" | "warning";
 }
 
+export interface User {
+  id: number;
+  email: string;
+  name: string | null;
+  plan: "free" | "pro";
+  created_at: string;
+}
+
+export interface Wallet {
+  id: number;
+  address: string;
+  chain: Chain;
+  label: string | null;
+  last_audit_at: string | null;
+  last_risk_level: string | null;
+  created_at: string;
+}
+
 export type Chain = "ethereum" | "solana";
 
 export interface Scenario {
