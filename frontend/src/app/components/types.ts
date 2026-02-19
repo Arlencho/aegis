@@ -77,8 +77,37 @@ export interface User {
   created_at: string;
 }
 
+export interface Organization {
+  id: number;
+  name: string;
+  plan: "free" | "pro";
+  role?: "owner" | "admin" | "viewer";
+  created_at: string;
+}
+
+export interface OrgMember {
+  id: number;
+  user_id: number;
+  role: "owner" | "admin" | "viewer";
+  email: string;
+  name: string | null;
+  created_at: string;
+}
+
+export interface Client {
+  id: number;
+  user_id: number | null;
+  org_id: number | null;
+  name: string;
+  description: string | null;
+  wallet_count?: number;
+  created_at: string;
+}
+
 export interface Wallet {
   id: number;
+  client_id: number;
+  client_name?: string;
   address: string;
   chain: Chain;
   label: string | null;

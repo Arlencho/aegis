@@ -56,7 +56,7 @@ async def init_db():
                 CREATE INDEX IF NOT EXISTS idx_audit_history_wallet
                     ON audit_history (wallet_address, created_at DESC)
             """)
-            # --- Users table (AEGIS Pro) ---
+            # --- Users table ---
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id              SERIAL PRIMARY KEY,
@@ -73,35 +73,132 @@ async def init_db():
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)
             """)
-            # --- Wallets table (AEGIS Pro) ---
+            # --- Organizations table ---
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS organizations (
+                    id              SERIAL PRIMARY KEY,
+                    name            TEXT NOT NULL,
+                    plan            TEXT NOT NULL DEFAULT 'pro',
+                    stripe_customer_id TEXT,
+                    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            # --- Org members (join table) ---
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS org_members (
+                    id              SERIAL PRIMARY KEY,
+                    org_id          INT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                    user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    role            TEXT NOT NULL DEFAULT 'viewer',
+                    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE (org_id, user_id)
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_org_members_user ON org_members (user_id)
+            """)
+            # --- Clients table (end-clients / treasuries) ---
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS clients (
+                    id              SERIAL PRIMARY KEY,
+                    user_id         INT REFERENCES users(id) ON DELETE CASCADE,
+                    org_id          INT REFERENCES organizations(id) ON DELETE CASCADE,
+                    name            TEXT NOT NULL,
+                    description     TEXT,
+                    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_clients_user ON clients (user_id)
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_clients_org ON clients (org_id)
+            """)
+            # --- Wallets table (belong to clients) ---
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS wallets (
                     id              SERIAL PRIMARY KEY,
-                    user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    client_id       INT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
                     address         TEXT NOT NULL,
                     chain           TEXT NOT NULL DEFAULT 'ethereum',
                     label           TEXT,
                     last_audit_at   TIMESTAMPTZ,
                     last_risk_level TEXT,
                     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    UNIQUE (user_id, address, chain)
+                    UNIQUE (client_id, address, chain)
                 )
             """)
             await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_wallets_user ON wallets (user_id)
+                CREATE INDEX IF NOT EXISTS idx_wallets_client ON wallets (client_id)
             """)
-            # Add optional user_id to audit_history
+            # Add optional user_id and client_id to audit_history
             try:
                 await conn.execute("""
                     ALTER TABLE audit_history
                         ADD COLUMN IF NOT EXISTS user_id INT REFERENCES users(id) ON DELETE SET NULL
                 """)
                 await conn.execute("""
+                    ALTER TABLE audit_history
+                        ADD COLUMN IF NOT EXISTS client_id INT REFERENCES clients(id) ON DELETE SET NULL
+                """)
+                await conn.execute("""
                     CREATE INDEX IF NOT EXISTS idx_audit_history_user
                         ON audit_history (user_id, created_at DESC)
                 """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_audit_history_client
+                        ON audit_history (client_id, created_at DESC)
+                """)
             except Exception:
-                pass  # Column already exists
+                pass  # Columns may already exist
+
+            # --- Migration: move old wallets (user_id-based) to client model ---
+            # Check if the old wallets table has a user_id column
+            has_user_id_col = await conn.fetchval("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'wallets' AND column_name = 'user_id'
+                )
+            """)
+            if has_user_id_col:
+                # Migrate: for each user that has wallets with user_id, create a
+                # default client and move their wallets over
+                old_wallets = await conn.fetch("""
+                    SELECT DISTINCT user_id FROM wallets WHERE user_id IS NOT NULL
+                """)
+                for row in old_wallets:
+                    uid = row["user_id"]
+                    # Create a default client for this user if they don't have one
+                    existing_client = await conn.fetchval(
+                        "SELECT id FROM clients WHERE user_id = $1 LIMIT 1", uid
+                    )
+                    if existing_client is None:
+                        existing_client = await conn.fetchval(
+                            """INSERT INTO clients (user_id, name)
+                               VALUES ($1, 'My Treasury')
+                               RETURNING id""",
+                            uid,
+                        )
+                    # Move wallets to the client
+                    await conn.execute(
+                        """UPDATE wallets SET client_id = $1 WHERE user_id = $2 AND client_id IS NULL""",
+                        existing_client, uid,
+                    )
+                # After migration, we can drop the user_id column from wallets
+                # But we do it carefully — only if client_id column exists and all rows migrated
+                all_migrated = await conn.fetchval(
+                    "SELECT NOT EXISTS (SELECT 1 FROM wallets WHERE client_id IS NULL)"
+                )
+                if all_migrated:
+                    try:
+                        await conn.execute("ALTER TABLE wallets DROP COLUMN IF EXISTS user_id")
+                        # Drop the old unique constraint if it exists
+                        await conn.execute("DROP INDEX IF EXISTS idx_wallets_user")
+                    except Exception:
+                        pass
+
         logger.info("Database initialized, all tables ready")
     except Exception as e:
         logger.error(f"Database connection failed: {e} — DB features disabled")
@@ -122,20 +219,31 @@ async def close_db():
 async def create_user(
     email: str, name: str | None, password_hash: str | None, provider: str = "credentials"
 ) -> dict | None:
-    """Create a new user. Returns user dict or None if DB unavailable."""
+    """Create a new user and a default client. Returns user dict or None if DB unavailable."""
     if not _pool:
         return None
     try:
-        row = await _pool.fetchrow(
-            """INSERT INTO users (email, name, password_hash, provider)
-               VALUES ($1, $2, $3, $4)
-               RETURNING id, email, name, provider, plan, created_at""",
-            email.lower().strip(),
-            name,
-            password_hash,
-            provider,
-        )
-        return dict(row) if row else None
+        async with _pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """INSERT INTO users (email, name, password_hash, provider)
+                       VALUES ($1, $2, $3, $4)
+                       RETURNING id, email, name, provider, plan, created_at""",
+                    email.lower().strip(),
+                    name,
+                    password_hash,
+                    provider,
+                )
+                if row is None:
+                    return None
+                user = dict(row)
+                # Create a default client for the new user
+                await conn.execute(
+                    """INSERT INTO clients (user_id, name)
+                       VALUES ($1, 'My Treasury')""",
+                    user["id"],
+                )
+                return user
     except asyncpg.UniqueViolationError:
         return None
     except Exception as e:
@@ -177,21 +285,275 @@ async def get_user_by_id(user_id: int) -> dict | None:
         return None
 
 
-# --- Wallet Management ---
+# --- Organization Management ---
 
 
-async def create_wallet(
-    user_id: int, address: str, chain: str, label: str | None = None
-) -> dict | None:
-    """Save a wallet for a user. Returns wallet dict or None."""
+async def create_organization(name: str, owner_user_id: int) -> dict | None:
+    """Create a new organization and add the user as owner."""
+    if not _pool:
+        return None
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """INSERT INTO organizations (name)
+                       VALUES ($1)
+                       RETURNING id, name, plan, stripe_customer_id, created_at""",
+                    name,
+                )
+                if row is None:
+                    return None
+                org = dict(row)
+                await conn.execute(
+                    """INSERT INTO org_members (org_id, user_id, role)
+                       VALUES ($1, $2, 'owner')""",
+                    org["id"], owner_user_id,
+                )
+                return org
+    except Exception as e:
+        logger.error(f"Org creation failed: {e}")
+        return None
+
+
+async def get_user_orgs(user_id: int) -> list[dict]:
+    """List all organizations the user belongs to."""
+    if not _pool:
+        return []
+    try:
+        rows = await _pool.fetch(
+            """SELECT o.id, o.name, o.plan, o.created_at, om.role
+                 FROM organizations o
+                 JOIN org_members om ON o.id = om.org_id
+                WHERE om.user_id = $1
+                ORDER BY o.created_at DESC""",
+            user_id,
+        )
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"User orgs fetch failed: {e}")
+        return []
+
+
+async def get_org(org_id: int) -> dict | None:
+    """Get a single organization by ID."""
     if not _pool:
         return None
     try:
         row = await _pool.fetchrow(
-            """INSERT INTO wallets (user_id, address, chain, label)
+            """SELECT id, name, plan, stripe_customer_id, created_at, updated_at
+                 FROM organizations WHERE id = $1""",
+            org_id,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Org fetch failed: {e}")
+        return None
+
+
+async def get_org_member(org_id: int, user_id: int) -> dict | None:
+    """Check if a user is a member of an org and return their role."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """SELECT id, org_id, user_id, role, created_at
+                 FROM org_members WHERE org_id = $1 AND user_id = $2""",
+            org_id, user_id,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Org member check failed: {e}")
+        return None
+
+
+async def get_org_members(org_id: int) -> list[dict]:
+    """List all members of an organization."""
+    if not _pool:
+        return []
+    try:
+        rows = await _pool.fetch(
+            """SELECT om.id, om.user_id, om.role, om.created_at,
+                      u.email, u.name
+                 FROM org_members om
+                 JOIN users u ON u.id = om.user_id
+                WHERE om.org_id = $1
+                ORDER BY om.created_at""",
+            org_id,
+        )
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Org members fetch failed: {e}")
+        return []
+
+
+async def add_org_member(org_id: int, user_id: int, role: str = "viewer") -> dict | None:
+    """Add a user to an organization."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """INSERT INTO org_members (org_id, user_id, role)
+               VALUES ($1, $2, $3)
+               RETURNING id, org_id, user_id, role, created_at""",
+            org_id, user_id, role,
+        )
+        return dict(row) if row else None
+    except asyncpg.UniqueViolationError:
+        return None
+    except Exception as e:
+        logger.error(f"Add org member failed: {e}")
+        return None
+
+
+async def remove_org_member(org_id: int, user_id: int) -> bool:
+    """Remove a user from an organization."""
+    if not _pool:
+        return False
+    try:
+        result = await _pool.execute(
+            "DELETE FROM org_members WHERE org_id = $1 AND user_id = $2",
+            org_id, user_id,
+        )
+        return result == "DELETE 1"
+    except Exception as e:
+        logger.error(f"Remove org member failed: {e}")
+        return False
+
+
+# --- Client Management ---
+
+
+async def create_client(
+    user_id: int | None, org_id: int | None, name: str, description: str | None = None
+) -> dict | None:
+    """Create a new client (treasury/end-client)."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """INSERT INTO clients (user_id, org_id, name, description)
                VALUES ($1, $2, $3, $4)
-               RETURNING id, user_id, address, chain, label, last_audit_at, last_risk_level, created_at""",
-            user_id,
+               RETURNING id, user_id, org_id, name, description, created_at""",
+            user_id, org_id, name, description,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Client creation failed: {e}")
+        return None
+
+
+async def get_clients(user_id: int, org_id: int | None = None) -> list[dict]:
+    """List clients accessible to a user (personal + org clients)."""
+    if not _pool:
+        return []
+    try:
+        if org_id:
+            # Get clients for a specific org
+            rows = await _pool.fetch(
+                """SELECT c.id, c.user_id, c.org_id, c.name, c.description, c.created_at,
+                          (SELECT COUNT(*) FROM wallets w WHERE w.client_id = c.id) as wallet_count
+                     FROM clients c
+                    WHERE c.org_id = $1
+                    ORDER BY c.created_at DESC""",
+                org_id,
+            )
+        else:
+            # Get personal clients + clients from all user's orgs
+            rows = await _pool.fetch(
+                """SELECT c.id, c.user_id, c.org_id, c.name, c.description, c.created_at,
+                          (SELECT COUNT(*) FROM wallets w WHERE w.client_id = c.id) as wallet_count
+                     FROM clients c
+                    WHERE c.user_id = $1
+                       OR c.org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+                    ORDER BY c.created_at DESC""",
+                user_id,
+            )
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Client list failed: {e}")
+        return []
+
+
+async def get_client(client_id: int) -> dict | None:
+    """Get a single client by ID."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """SELECT id, user_id, org_id, name, description, created_at, updated_at
+                 FROM clients WHERE id = $1""",
+            client_id,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Client fetch failed: {e}")
+        return None
+
+
+async def update_client(client_id: int, name: str, description: str | None = None) -> dict | None:
+    """Update a client's name and description."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """UPDATE clients SET name = $2, description = $3, updated_at = NOW()
+               WHERE id = $1
+               RETURNING id, user_id, org_id, name, description, created_at, updated_at""",
+            client_id, name, description,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Client update failed: {e}")
+        return None
+
+
+async def delete_client(client_id: int) -> bool:
+    """Delete a client and all its wallets (CASCADE)."""
+    if not _pool:
+        return False
+    try:
+        result = await _pool.execute("DELETE FROM clients WHERE id = $1", client_id)
+        return result == "DELETE 1"
+    except Exception as e:
+        logger.error(f"Client delete failed: {e}")
+        return False
+
+
+async def user_can_access_client(user_id: int, client_id: int) -> bool:
+    """Check if a user can access a client (owns it or is in the client's org)."""
+    if not _pool:
+        return False
+    try:
+        result = await _pool.fetchval(
+            """SELECT EXISTS (
+                SELECT 1 FROM clients c
+                WHERE c.id = $2
+                  AND (c.user_id = $1
+                       OR c.org_id IN (SELECT org_id FROM org_members WHERE user_id = $1))
+            )""",
+            user_id, client_id,
+        )
+        return bool(result)
+    except Exception as e:
+        logger.error(f"Client access check failed: {e}")
+        return False
+
+
+# --- Wallet Management ---
+
+
+async def create_wallet(
+    client_id: int, address: str, chain: str, label: str | None = None
+) -> dict | None:
+    """Save a wallet for a client. Returns wallet dict or None."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """INSERT INTO wallets (client_id, address, chain, label)
+               VALUES ($1, $2, $3, $4)
+               RETURNING id, client_id, address, chain, label, last_audit_at, last_risk_level, created_at""",
+            client_id,
             address.lower().strip(),
             chain,
             label,
@@ -204,16 +566,16 @@ async def create_wallet(
         return None
 
 
-async def get_wallets(user_id: int) -> list[dict]:
-    """List all saved wallets for a user."""
+async def get_wallets(client_id: int) -> list[dict]:
+    """List all wallets for a client."""
     if not _pool:
         return []
     try:
         rows = await _pool.fetch(
-            """SELECT id, address, chain, label, last_audit_at, last_risk_level, created_at
-                 FROM wallets WHERE user_id = $1
+            """SELECT id, client_id, address, chain, label, last_audit_at, last_risk_level, created_at
+                 FROM wallets WHERE client_id = $1
                  ORDER BY created_at DESC""",
-            user_id,
+            client_id,
         )
         return [dict(r) for r in rows]
     except Exception as e:
@@ -221,16 +583,37 @@ async def get_wallets(user_id: int) -> list[dict]:
         return []
 
 
-async def get_wallet(wallet_id: int, user_id: int) -> dict | None:
-    """Get a single wallet by ID, ensuring it belongs to the user."""
+async def get_wallets_for_user(user_id: int) -> list[dict]:
+    """List all wallets across all clients accessible to a user."""
+    if not _pool:
+        return []
+    try:
+        rows = await _pool.fetch(
+            """SELECT w.id, w.client_id, w.address, w.chain, w.label,
+                      w.last_audit_at, w.last_risk_level, w.created_at,
+                      c.name as client_name
+                 FROM wallets w
+                 JOIN clients c ON c.id = w.client_id
+                WHERE c.user_id = $1
+                   OR c.org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+                ORDER BY w.created_at DESC""",
+            user_id,
+        )
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"User wallets list failed: {e}")
+        return []
+
+
+async def get_wallet(wallet_id: int) -> dict | None:
+    """Get a single wallet by ID."""
     if not _pool:
         return None
     try:
         row = await _pool.fetchrow(
-            """SELECT id, address, chain, label, last_audit_at, last_risk_level, created_at
-                 FROM wallets WHERE id = $1 AND user_id = $2""",
+            """SELECT id, client_id, address, chain, label, last_audit_at, last_risk_level, created_at
+                 FROM wallets WHERE id = $1""",
             wallet_id,
-            user_id,
         )
         return dict(row) if row else None
     except Exception as e:
@@ -238,18 +621,16 @@ async def get_wallet(wallet_id: int, user_id: int) -> dict | None:
         return None
 
 
-async def update_wallet(wallet_id: int, user_id: int, label: str) -> dict | None:
+async def update_wallet(wallet_id: int, label: str) -> dict | None:
     """Update wallet label. Returns updated wallet or None."""
     if not _pool:
         return None
     try:
         row = await _pool.fetchrow(
-            """UPDATE wallets SET label = $3
-               WHERE id = $1 AND user_id = $2
-               RETURNING id, address, chain, label, last_audit_at, last_risk_level, created_at""",
-            wallet_id,
-            user_id,
-            label,
+            """UPDATE wallets SET label = $2
+               WHERE id = $1
+               RETURNING id, client_id, address, chain, label, last_audit_at, last_risk_level, created_at""",
+            wallet_id, label,
         )
         return dict(row) if row else None
     except Exception as e:
@@ -257,15 +638,13 @@ async def update_wallet(wallet_id: int, user_id: int, label: str) -> dict | None
         return None
 
 
-async def delete_wallet(wallet_id: int, user_id: int) -> bool:
+async def delete_wallet(wallet_id: int) -> bool:
     """Delete a wallet. Returns True if deleted."""
     if not _pool:
         return False
     try:
         result = await _pool.execute(
-            "DELETE FROM wallets WHERE id = $1 AND user_id = $2",
-            wallet_id,
-            user_id,
+            "DELETE FROM wallets WHERE id = $1", wallet_id
         )
         return result == "DELETE 1"
     except Exception as e:
@@ -292,17 +671,16 @@ async def update_wallet_audit(wallet_id: int, risk_level: str | None) -> None:
 
 
 async def get_dashboard_stats(user_id: int) -> dict:
-    """Return aggregate dashboard stats for a user."""
+    """Return aggregate dashboard stats for a user across all their clients."""
     if not _pool:
-        return {"wallet_count": 0, "audit_count": 0, "latest_risk": None, "wallets": []}
+        return {"wallet_count": 0, "audit_count": 0, "latest_risk": None, "wallets": [], "client_count": 0}
     try:
+        # Get all clients accessible to this user
+        clients = await get_clients(user_id)
+        client_ids = [c["id"] for c in clients]
+
         # Wallet count + data
-        wallet_rows = await _pool.fetch(
-            """SELECT id, address, chain, label, last_audit_at, last_risk_level, created_at
-                 FROM wallets WHERE user_id = $1 ORDER BY created_at DESC""",
-            user_id,
-        )
-        wallets = [dict(r) for r in wallet_rows]
+        wallets = await get_wallets_for_user(user_id)
 
         # Total audit count across user's wallets
         audit_count = 0
@@ -331,10 +709,11 @@ async def get_dashboard_stats(user_id: int) -> dict:
             "audit_count": audit_count or 0,
             "latest_risk": latest_risk,
             "wallets": wallets,
+            "client_count": len(client_ids),
         }
     except Exception as e:
         logger.error(f"Dashboard stats failed: {e}")
-        return {"wallet_count": 0, "audit_count": 0, "latest_risk": None, "wallets": []}
+        return {"wallet_count": 0, "audit_count": 0, "latest_risk": None, "wallets": [], "client_count": 0}
 
 
 # --- Waitlist ---
@@ -379,7 +758,7 @@ async def get_waitlist_count() -> int:
 
 
 async def save_audit(
-    wallet_address: str, chain: str, report: dict
+    wallet_address: str, chain: str, report: dict, client_id: int | None = None
 ) -> int | None:
     """Persist an audit report. Returns the new row ID, or None if DB unavailable."""
     if not _pool:
@@ -393,8 +772,8 @@ async def save_audit(
         return await _pool.fetchval(
             """INSERT INTO audit_history
                    (wallet_address, chain, total_usd, overall_status,
-                    passed, failed, total_rules, risk_level, report_json)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+                    passed, failed, total_rules, risk_level, report_json, client_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
                RETURNING id""",
             wallet_address.lower().strip(),
             chain,
@@ -405,6 +784,7 @@ async def save_audit(
             report.get("total_rules", 0),
             risk_level,
             json.dumps(report),
+            client_id,
         )
     except Exception as e:
         logger.error(f"Audit save failed: {e}")

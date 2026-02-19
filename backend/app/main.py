@@ -23,8 +23,12 @@ from .database import (
     add_to_waitlist, get_waitlist_count,
     save_audit, get_audit_history, get_audit_detail,
     create_user, get_user_by_email, get_user_by_id,
-    create_wallet, get_wallets, get_wallet, update_wallet, delete_wallet,
-    update_wallet_audit, get_dashboard_stats,
+    create_organization, get_user_orgs, get_org, get_org_member, get_org_members,
+    add_org_member, remove_org_member,
+    create_client, get_clients, get_client, update_client, delete_client,
+    user_can_access_client,
+    create_wallet, get_wallets, get_wallets_for_user, get_wallet, update_wallet,
+    delete_wallet, update_wallet_audit, get_dashboard_stats,
 )
 
 import yaml
@@ -90,6 +94,13 @@ async def _fetch_evm_transactions(address: str, limit: int = 20, chain: str = "e
     return await fetch_eoa_transactions(address, limit=limit, chain=chain)
 
 
+# --- Helpers ---
+
+def _get_user_id(user: dict) -> int:
+    """Extract user ID from JWT payload."""
+    return int(user.get("sub", user.get("id", 0)))
+
+
 # --- App setup ---
 
 @asynccontextmanager
@@ -99,7 +110,7 @@ async def lifespan(app: FastAPI):
     await close_db()
 
 
-app = FastAPI(title="AEGIS", version="0.6.0", lifespan=lifespan)
+app = FastAPI(title="AEGIS", version="0.7.0", lifespan=lifespan)
 
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
@@ -149,10 +160,22 @@ class VerifyRequest(BaseModel):
     password: str
 
 
+class ClientCreateRequest(BaseModel):
+    name: str
+    description: str | None = None
+    org_id: int | None = None
+
+
+class ClientUpdateRequest(BaseModel):
+    name: str
+    description: str | None = None
+
+
 class WalletCreateRequest(BaseModel):
     address: str
     chain: str = "ethereum"
     label: str | None = None
+    client_id: int
 
 
 class WalletUpdateRequest(BaseModel):
@@ -164,9 +187,18 @@ class WalletAuditRequest(BaseModel):
     include_ai: bool = True
 
 
+class OrgCreateRequest(BaseModel):
+    name: str
+
+
+class OrgInviteRequest(BaseModel):
+    email: str
+    role: str = "viewer"
+
+
 @app.get("/")
 def root():
-    return {"service": "AEGIS", "version": "0.6.0", "docs": "/docs"}
+    return {"service": "AEGIS", "version": "0.7.0", "docs": "/docs"}
 
 
 @app.get("/health")
@@ -232,7 +264,7 @@ async def verify_credentials(request: VerifyRequest, req: Request):
 @app.get("/users/me")
 async def get_me(user: dict = Depends(get_current_user)):
     """Get current user profile (requires authentication)."""
-    db_user = await get_user_by_id(int(user.get("sub", user.get("id", 0))))
+    db_user = await get_user_by_id(_get_user_id(user))
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return {
@@ -244,15 +276,188 @@ async def get_me(user: dict = Depends(get_current_user)):
     }
 
 
-# --- Wallet endpoints (protected) ---
+# --- Organization endpoints (protected) ---
+
+@app.post("/orgs")
+async def create_org_endpoint(
+    request: OrgCreateRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Create a new organization. The authenticated user becomes the owner."""
+    user_id = _get_user_id(user)
+    org = await create_organization(request.name, user_id)
+    if org is None:
+        raise HTTPException(status_code=500, detail="Failed to create organization")
+    return org
+
+
+@app.get("/orgs")
+async def list_orgs(user: dict = Depends(get_current_user)):
+    """List all organizations the current user belongs to."""
+    user_id = _get_user_id(user)
+    orgs = await get_user_orgs(user_id)
+    return {"organizations": orgs}
+
+
+@app.get("/orgs/{org_id}")
+async def get_org_endpoint(org_id: int, user: dict = Depends(get_current_user)):
+    """Get a single organization (must be a member)."""
+    user_id = _get_user_id(user)
+    member = await get_org_member(org_id, user_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    org = await get_org(org_id)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    org["role"] = member["role"]
+    return org
+
+
+@app.get("/orgs/{org_id}/members")
+async def list_org_members(org_id: int, user: dict = Depends(get_current_user)):
+    """List members of an organization."""
+    user_id = _get_user_id(user)
+    member = await get_org_member(org_id, user_id)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    members = await get_org_members(org_id)
+    return {"members": members}
+
+
+@app.post("/orgs/{org_id}/members")
+async def invite_org_member(
+    org_id: int,
+    request: OrgInviteRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Invite a user to an organization (owner/admin only)."""
+    user_id = _get_user_id(user)
+    member = await get_org_member(org_id, user_id)
+    if member is None or member["role"] not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owners and admins can invite members")
+
+    if request.role not in ("admin", "viewer"):
+        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'viewer'")
+
+    invited_user = await get_user_by_email(request.email)
+    if invited_user is None:
+        raise HTTPException(status_code=404, detail="User not found. They must sign up first.")
+
+    result = await add_org_member(org_id, invited_user["id"], request.role)
+    if result is None:
+        raise HTTPException(status_code=409, detail="User is already a member")
+    return result
+
+
+@app.delete("/orgs/{org_id}/members/{member_user_id}")
+async def remove_org_member_endpoint(
+    org_id: int,
+    member_user_id: int,
+    user: dict = Depends(get_current_user),
+):
+    """Remove a member from an organization (owner/admin only)."""
+    user_id = _get_user_id(user)
+    member = await get_org_member(org_id, user_id)
+    if member is None or member["role"] not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owners and admins can remove members")
+
+    if member_user_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot remove yourself")
+
+    deleted = await remove_org_member(org_id, member_user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Member not found")
+    return {"success": True}
+
+
+# --- Client endpoints (protected) ---
+
+@app.post("/clients")
+async def create_client_endpoint(
+    request: ClientCreateRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Create a new client (treasury/end-client)."""
+    user_id = _get_user_id(user)
+
+    # If org_id provided, verify user is a member
+    if request.org_id:
+        member = await get_org_member(request.org_id, user_id)
+        if member is None or member["role"] not in ("owner", "admin"):
+            raise HTTPException(status_code=403, detail="Not authorized to create clients in this org")
+        client = await create_client(None, request.org_id, request.name, request.description)
+    else:
+        client = await create_client(user_id, None, request.name, request.description)
+
+    if client is None:
+        raise HTTPException(status_code=500, detail="Failed to create client")
+    return client
+
+
+@app.get("/clients")
+async def list_clients(
+    user: dict = Depends(get_current_user),
+    org_id: int | None = None,
+):
+    """List all clients accessible to the current user."""
+    user_id = _get_user_id(user)
+    clients = await get_clients(user_id, org_id=org_id)
+    return {"clients": clients}
+
+
+@app.get("/clients/{client_id}")
+async def get_client_endpoint(client_id: int, user: dict = Depends(get_current_user)):
+    """Get a single client."""
+    user_id = _get_user_id(user)
+    if not await user_can_access_client(user_id, client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    client = await get_client(client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return client
+
+
+@app.patch("/clients/{client_id}")
+async def update_client_endpoint(
+    client_id: int,
+    request: ClientUpdateRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Update a client's name and description."""
+    user_id = _get_user_id(user)
+    if not await user_can_access_client(user_id, client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    client = await update_client(client_id, request.name, request.description)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return client
+
+
+@app.delete("/clients/{client_id}")
+async def delete_client_endpoint(client_id: int, user: dict = Depends(get_current_user)):
+    """Delete a client and all its wallets."""
+    user_id = _get_user_id(user)
+    if not await user_can_access_client(user_id, client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    deleted = await delete_client(client_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return {"success": True}
+
+
+# --- Wallet endpoints (protected, scoped through clients) ---
 
 @app.post("/wallets")
 async def create_wallet_endpoint(
     request: WalletCreateRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Save a wallet to the user's account."""
-    user_id = int(user.get("sub", user.get("id", 0)))
+    """Save a wallet to a client."""
+    user_id = _get_user_id(user)
+
+    # Verify user can access this client
+    if not await user_can_access_client(user_id, request.client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
 
     # Validate address format
     if request.chain == "solana":
@@ -262,17 +467,25 @@ async def create_wallet_endpoint(
         if not _validate_eth_address(request.address):
             raise HTTPException(status_code=400, detail="Invalid Ethereum address format.")
 
-    wallet = await create_wallet(user_id, request.address, request.chain, request.label)
+    wallet = await create_wallet(request.client_id, request.address, request.chain, request.label)
     if wallet is None:
         raise HTTPException(status_code=409, detail="Wallet already saved")
     return wallet
 
 
 @app.get("/wallets")
-async def list_wallets(user: dict = Depends(get_current_user)):
-    """List all saved wallets for the current user."""
-    user_id = int(user.get("sub", user.get("id", 0)))
-    wallets = await get_wallets(user_id)
+async def list_wallets(
+    user: dict = Depends(get_current_user),
+    client_id: int | None = None,
+):
+    """List wallets. If client_id provided, scope to that client. Otherwise all user wallets."""
+    user_id = _get_user_id(user)
+    if client_id:
+        if not await user_can_access_client(user_id, client_id):
+            raise HTTPException(status_code=404, detail="Client not found")
+        wallets = await get_wallets(client_id)
+    else:
+        wallets = await get_wallets_for_user(user_id)
     return {"wallets": wallets}
 
 
@@ -283,11 +496,16 @@ async def update_wallet_endpoint(
     user: dict = Depends(get_current_user),
 ):
     """Update a wallet's label."""
-    user_id = int(user.get("sub", user.get("id", 0)))
-    wallet = await update_wallet(wallet_id, user_id, request.label)
+    user_id = _get_user_id(user)
+    wallet = await get_wallet(wallet_id)
     if wallet is None:
         raise HTTPException(status_code=404, detail="Wallet not found")
-    return wallet
+    if not await user_can_access_client(user_id, wallet["client_id"]):
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    updated = await update_wallet(wallet_id, request.label)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    return updated
 
 
 @app.delete("/wallets/{wallet_id}")
@@ -296,8 +514,13 @@ async def delete_wallet_endpoint(
     user: dict = Depends(get_current_user),
 ):
     """Delete a saved wallet."""
-    user_id = int(user.get("sub", user.get("id", 0)))
-    deleted = await delete_wallet(wallet_id, user_id)
+    user_id = _get_user_id(user)
+    wallet = await get_wallet(wallet_id)
+    if wallet is None:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    if not await user_can_access_client(user_id, wallet["client_id"]):
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    deleted = await delete_wallet(wallet_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Wallet not found")
     return {"success": True}
@@ -314,9 +537,11 @@ async def audit_wallet(
     if req and not _check_rate_limit(req.client.host if req.client else "unknown"):
         raise HTTPException(status_code=429, detail="Too many requests.")
 
-    user_id = int(user.get("sub", user.get("id", 0)))
-    wallet = await get_wallet(wallet_id, user_id)
+    user_id = _get_user_id(user)
+    wallet = await get_wallet(wallet_id)
     if wallet is None:
+        raise HTTPException(status_code=404, detail="Wallet not found")
+    if not await user_can_access_client(user_id, wallet["client_id"]):
         raise HTTPException(status_code=404, detail="Wallet not found")
 
     address = wallet["address"]
@@ -345,7 +570,7 @@ async def audit_wallet(
     if request.include_ai:
         report["ai_analysis"] = await analyze_treasury(balances, report)
 
-    await save_audit(address, chain, report)
+    await save_audit(address, chain, report, client_id=wallet["client_id"])
 
     # Update wallet last audit info
     risk_level = None
@@ -360,7 +585,7 @@ async def audit_wallet(
 @app.get("/dashboard/overview")
 async def dashboard_overview(user: dict = Depends(get_current_user)):
     """Get dashboard overview stats for the logged-in user."""
-    user_id = int(user.get("sub", user.get("id", 0)))
+    user_id = _get_user_id(user)
     stats = await get_dashboard_stats(user_id)
     return stats
 
@@ -372,9 +597,9 @@ async def dashboard_history(
     wallet_address: str | None = None,
 ):
     """Get audit history for the logged-in user's wallets."""
-    user_id = int(user.get("sub", user.get("id", 0)))
-    # Get user's wallet addresses
-    wallets = await get_wallets(user_id)
+    user_id = _get_user_id(user)
+    # Get all user's wallets across all clients
+    wallets = await get_wallets_for_user(user_id)
     if not wallets:
         return {"audits": []}
 
