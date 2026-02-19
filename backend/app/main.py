@@ -31,6 +31,7 @@ from .database import (
     create_wallet, get_wallets, get_wallets_for_user, get_wallet, update_wallet,
     delete_wallet, update_wallet_audit, update_wallet_schedule, get_dashboard_stats,
     get_notifications, get_unread_count, mark_notifications_read,
+    get_audit_history_by_client,
 )
 from .scheduler import scheduler_loop
 from .notifications import notify_audit_result
@@ -468,6 +469,20 @@ async def delete_client_endpoint(client_id: int, user: dict = Depends(get_curren
     if not deleted:
         raise HTTPException(status_code=404, detail="Client not found")
     return {"success": True}
+
+
+@app.get("/clients/{client_id}/audits")
+async def client_audit_history(
+    client_id: int,
+    user: dict = Depends(get_current_user),
+    limit: int = 50,
+):
+    """Get audit history for a specific client."""
+    user_id = _get_user_id(user)
+    if not await user_can_access_client(user_id, client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    audits = await get_audit_history_by_client(client_id, limit=min(limit, 100))
+    return {"audits": audits}
 
 
 @app.post("/clients/{client_id}/test-webhook")

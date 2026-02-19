@@ -1118,6 +1118,27 @@ async def get_audit_history(
         return []
 
 
+async def get_audit_history_by_client(client_id: int, limit: int = 50) -> list[dict]:
+    """Return recent audits for a client (without full report JSON)."""
+    if not _pool:
+        return []
+    try:
+        rows = await _pool.fetch(
+            """SELECT id, wallet_address, chain, total_usd, overall_status,
+                      passed, failed, total_rules, risk_level, trigger, created_at
+                 FROM audit_history
+                WHERE client_id = $1
+                ORDER BY created_at DESC
+                LIMIT $2""",
+            client_id,
+            limit,
+        )
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Client audit history fetch failed: {e}")
+        return []
+
+
 async def get_audit_detail(audit_id: int) -> dict | None:
     """Return a single audit with full report JSON."""
     if not _pool:

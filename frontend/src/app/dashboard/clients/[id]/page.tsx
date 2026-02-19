@@ -4,18 +4,35 @@ import { useState, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import type { Client, Wallet, Chain } from "../../../components/types";
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import type { Client, Wallet, Chain, AuditHistorySummary } from "../../../components/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+const RISK_MAP: Record<string, number> = { low: 1, medium: 2, high: 3 };
+const RISK_COLORS: Record<number, string> = { 1: "#4ade80", 2: "#facc15", 3: "#f87171" };
 
 export default function ClientDetailPage() {
   const { data: session } = useSession();
   const params = useParams();
   const clientId = params.id as string;
 
+  const [mounted, setMounted] = useState(false);
   const [client, setClient] = useState<Client | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [auditHistory, setAuditHistory] = useState<AuditHistorySummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [trendsOpen, setTrendsOpen] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [address, setAddress] = useState("");
   const [chain, setChain] = useState<Chain>("ethereum");
@@ -36,11 +53,14 @@ export default function ClientDetailPage() {
     return {};
   }
 
+  useEffect(() => setMounted(true), []);
+
   async function fetchData() {
     try {
-      const [clientRes, walletsRes] = await Promise.all([
+      const [clientRes, walletsRes, auditsRes] = await Promise.all([
         fetch(`${API_URL}/clients/${clientId}`, { headers: authHeaders() }),
         fetch(`${API_URL}/wallets?client_id=${clientId}`, { headers: authHeaders() }),
+        fetch(`${API_URL}/clients/${clientId}/audits`, { headers: authHeaders() }),
       ]);
       if (clientRes.ok) {
         const c = await clientRes.json();
@@ -51,6 +71,10 @@ export default function ClientDetailPage() {
       if (walletsRes.ok) {
         const data = await walletsRes.json();
         setWallets(data.wallets || []);
+      }
+      if (auditsRes.ok) {
+        const data = await auditsRes.json();
+        setAuditHistory(data.audits || []);
       }
     } catch {
       // silently fail
@@ -63,6 +87,18 @@ export default function ClientDetailPage() {
     if (session?.accessToken) fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, clientId]);
+
+  // Chart data — oldest first
+  const chartData = [...auditHistory]
+    .reverse()
+    .map((a) => ({
+      date: new Date(a.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      score: a.total_rules > 0 ? Math.round((a.passed / a.total_rules) * 100) : 0,
+      value: Number(a.total_usd),
+      risk: RISK_MAP[a.risk_level || ""] || 0,
+      riskLabel: a.risk_level || "unknown",
+    }));
+  const showCharts = mounted && chartData.length > 1;
 
   async function handleAddWallet(e: FormEvent) {
     e.preventDefault();
@@ -395,6 +431,123 @@ export default function ClientDetailPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Audit Trends */}
+      {showCharts && (
+        <div className="mt-8 border border-gray-800 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setTrendsOpen(!trendsOpen)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-gray-900/50
+                       hover:bg-gray-900 transition text-left min-h-[48px]"
+          >
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+              </svg>
+              <span className="text-sm font-medium text-gray-300">Audit Trends</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-300 font-medium">
+                {auditHistory.length} audits
+              </span>
+            </div>
+            <svg
+              className={`w-4 h-4 text-gray-500 transition-transform ${trendsOpen ? "rotate-180" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+            </svg>
+          </button>
+
+          {trendsOpen && (
+            <div className="border-t border-gray-800 px-4 py-4 space-y-6">
+              {/* Compliance Score */}
+              <div>
+                <p className="text-xs text-gray-500 mb-2">Compliance Score Over Time</p>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[300px]">
+                    <ResponsiveContainer width="100%" height={180}>
+                      <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6b7280" }} stroke="#374151" />
+                        <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "#6b7280" }} stroke="#374151" tickFormatter={(v: number) => `${v}%`} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "#111827", border: "1px solid #374151", borderRadius: "8px", fontSize: "12px" }}
+                          labelStyle={{ color: "#9ca3af" }}
+                          formatter={(value) => [`${value}%`, "Compliance"]}
+                        />
+                        <Line type="monotone" dataKey="score" stroke="#3b82f6" strokeWidth={2} dot={{ fill: "#3b82f6", r: 3 }} activeDot={{ r: 5, fill: "#60a5fa" }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Treasury Value */}
+              <div>
+                <p className="text-xs text-gray-500 mb-2">Treasury Value Over Time</p>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[300px]">
+                    <ResponsiveContainer width="100%" height={180}>
+                      <AreaChart data={chartData}>
+                        <defs>
+                          <linearGradient id="valueGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#4ade80" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#4ade80" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6b7280" }} stroke="#374151" />
+                        <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} stroke="#374151" tickFormatter={(v: number) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "#111827", border: "1px solid #374151", borderRadius: "8px", fontSize: "12px" }}
+                          labelStyle={{ color: "#9ca3af" }}
+                          formatter={(value) => [`$${Number(value).toLocaleString()}`, "Value"]}
+                        />
+                        <Area type="monotone" dataKey="value" stroke="#4ade80" strokeWidth={2} fill="url(#valueGradient)" dot={{ fill: "#4ade80", r: 3 }} activeDot={{ r: 5, fill: "#86efac" }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Risk Level Timeline */}
+              <div>
+                <p className="text-xs text-gray-500 mb-2">Risk Level Timeline</p>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[300px]">
+                    <ResponsiveContainer width="100%" height={140}>
+                      <LineChart data={chartData.filter((d) => d.risk > 0)}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6b7280" }} stroke="#374151" />
+                        <YAxis domain={[0.5, 3.5]} ticks={[1, 2, 3]} tick={{ fontSize: 10, fill: "#6b7280" }} stroke="#374151" tickFormatter={(v: number) => ["", "Low", "Med", "High"][v] || ""} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "#111827", border: "1px solid #374151", borderRadius: "8px", fontSize: "12px" }}
+                          labelStyle={{ color: "#9ca3af" }}
+                          formatter={(_value, _name, props) => {
+                            const label = props.payload?.riskLabel || "unknown";
+                            return [label.charAt(0).toUpperCase() + label.slice(1), "Risk"];
+                          }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="risk"
+                          stroke="#6b7280"
+                          strokeWidth={2}
+                          dot={(props) => {
+                            const { cx, cy, payload } = props;
+                            const color = RISK_COLORS[payload.risk] || "#6b7280";
+                            return <circle cx={cx} cy={cy} r={5} fill={color} stroke={color} strokeWidth={2} />;
+                          }}
+                          activeDot={{ r: 7 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
