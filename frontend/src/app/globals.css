@@ -12,7 +12,75 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* Landing page styles */
+
+.gradient-text {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #60a5fa 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 6s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.hero-glow {
+  background: radial-gradient(ellipse at center, rgba(96, 165, 250, 0.07) 0%, transparent 70%);
+}
+
+.step-connector {
+  position: relative;
+}
+
+.step-connector::after {
+  content: "";
+  position: absolute;
+  top: 20px;
+  left: calc(50% + 24px);
+  width: calc(100% - 48px);
+  height: 2px;
+  background: linear-gradient(90deg, #1e3a5f, #374151);
+}
+
+.step-connector:last-child::after {
+  display: none;
+}
+
+.pain-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.pain-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.pain-card-red::before {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+.pain-card-yellow::before {
+  background: linear-gradient(90deg, #eab308, #ca8a04);
+}
+
+.pain-card-orange::before {
+  background: linear-gradient(90deg, #f97316, #ea580c);
 }

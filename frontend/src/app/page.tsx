@@ -323,98 +323,372 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen p-6 md:p-12">
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-1 tracking-tight">AEGIS</h1>
-        <p className="text-gray-400 mb-2 text-sm">
-          See if your treasury is within risk limits — in 30 seconds.
-        </p>
-        <p className="text-gray-500 mb-8 text-xs leading-relaxed">
-          Paste any Safe wallet address, adjust the risk rules below, and get
-          an instant compliance report with AI-powered analysis.
-        </p>
+    <main className="min-h-screen">
+      {/* Section 1: Hero */}
+      <HeroSection />
 
-        {/* Scenario Gallery */}
-        <ScenarioGallery
-          scenarios={SCENARIOS}
-          activeId={activeScenario}
-          onSelect={handleScenarioClick}
-        />
+      {/* Section 2: Problem */}
+      <ProblemSection />
 
-        {/* Rule Editor */}
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-300 mb-3">
-            Policy Rules
-            <span className="text-gray-600 font-normal ml-2">
-              Adjust thresholds to match your risk tolerance
-            </span>
-          </h2>
-          {RULE_CONFIGS.map((config) => (
-            <RuleEditor
-              key={config.type}
-              config={config}
-              value={ruleValues[config.type]}
-              onChange={(v) => updateRuleValue(config.type, v)}
-            />
+      {/* Section 3: How It Works */}
+      <HowItWorksSection />
+
+      {/* Section 4: What AEGIS Checks */}
+      <FeaturesSection />
+
+      {/* Section 5: Credibility Strip */}
+      <CredibilityStrip />
+
+      {/* Section 6: Interactive Demo */}
+      <section id="demo" className="py-16 md:py-24 px-6 md:px-12">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl md:text-3xl font-bold mb-3">Try It Now</h2>
+            <p className="text-gray-400 text-sm">
+              Paste any Safe wallet address or explore the example scenarios below
+            </p>
+          </div>
+
+          {/* Scenario Gallery */}
+          <ScenarioGallery
+            scenarios={SCENARIOS}
+            activeId={activeScenario}
+            onSelect={handleScenarioClick}
+          />
+
+          {/* Rule Editor */}
+          <div className="mb-6">
+            <h2 className="text-sm font-semibold text-gray-300 mb-3">
+              Policy Rules
+              <span className="text-gray-600 font-normal ml-2">
+                Adjust thresholds to match your risk tolerance
+              </span>
+            </h2>
+            {RULE_CONFIGS.map((config) => (
+              <RuleEditor
+                key={config.type}
+                config={config}
+                value={ruleValues[config.type]}
+                onChange={(v) => updateRuleValue(config.type, v)}
+              />
+            ))}
+          </div>
+
+          {/* Address Input + Submit */}
+          <form onSubmit={handleSubmit} className="space-y-4 mb-8">
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-300">
+                Safe Wallet Address
+              </label>
+              <input
+                type="text"
+                placeholder="0x..."
+                value={safeAddress}
+                onChange={(e) => setSafeAddress(e.target.value)}
+                className="w-full px-4 py-2.5 bg-gray-900 border border-gray-700 rounded-lg
+                           text-white placeholder-gray-500
+                           focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500
+                           font-mono text-sm"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setSafeAddress(SAMPLE_SAFE)}
+                className="mt-1.5 text-xs text-blue-400 hover:text-blue-300 transition"
+              >
+                Try a sample address
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !safeAddress}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700
+                         disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed
+                         rounded-lg font-medium transition text-sm"
+            >
+              {loading ? "Analyzing with AI..." : "Run Free Audit"}
+            </button>
+          </form>
+
+          {error && (
+            <div className="p-4 bg-red-900/40 border border-red-800 rounded-lg mb-6">
+              <p className="text-red-300 text-sm">{error}</p>
+            </div>
+          )}
+
+          {report && (
+            <>
+              <ReportCard report={report} />
+              {report.ai_analysis && (
+                <AIAnalysisPanel analysis={report.ai_analysis} />
+              )}
+              {report.recommendations && report.recommendations.length > 0 && (
+                <RecommendationPanel recommendations={report.recommendations} />
+              )}
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Section 7: CTA Footer */}
+      <CTAFooter />
+    </main>
+  );
+}
+
+// --- Landing Page Sections ---
+
+function HeroSection() {
+  return (
+    <section className="relative py-20 md:py-32 px-6 md:px-12">
+      <div className="hero-glow absolute inset-0 pointer-events-none" />
+      <div className="max-w-5xl mx-auto text-center relative">
+        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight tracking-tight">
+          Your treasury has a risk policy.{" "}
+          <span className="gradient-text">But nobody&apos;s enforcing it.</span>
+        </h1>
+        <p className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto mb-8 leading-relaxed">
+          AEGIS audits any Safe wallet against your risk rules and gives you
+          AI-powered analysis — in 30 seconds. No signup. No config. Just paste
+          an address.
+        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <a
+            href="#demo"
+            className="px-8 py-3.5 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold
+                       transition text-base shadow-lg shadow-blue-600/20"
+          >
+            Try the Free Audit
+          </a>
+          <span className="text-xs px-3 py-1.5 bg-purple-900/30 text-purple-300 rounded-full border border-purple-800/40">
+            Powered by Claude AI
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProblemSection() {
+  const cards = [
+    {
+      hook: "Policy lives in Notion",
+      detail:
+        "Risk limits are written in governance docs but never enforced programmatically. Drift happens silently.",
+      colorClass: "pain-card-red",
+    },
+    {
+      hook: "Compliance is manual",
+      detail:
+        "Someone checks a spreadsheet — maybe. One missed rebalance and you're over-concentrated without knowing it.",
+      colorClass: "pain-card-orange",
+    },
+    {
+      hook: "No alerts until it's too late",
+      detail:
+        "By the time a breach surfaces in a governance call, the damage is already done.",
+      colorClass: "pain-card-yellow",
+    },
+  ];
+
+  return (
+    <section className="py-16 md:py-24 px-6 md:px-12 bg-gray-950/50">
+      <div className="max-w-5xl mx-auto">
+        <h2 className="text-center text-2xl md:text-3xl font-bold mb-4">
+          The Problem
+        </h2>
+        <p className="text-center text-gray-500 text-sm mb-12 max-w-xl mx-auto">
+          Most crypto treasuries manage millions with rules that exist only on
+          paper
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          {cards.map((card, i) => (
+            <div
+              key={i}
+              className={`pain-card ${card.colorClass} p-6 bg-gray-900 border border-gray-800 rounded-xl`}
+            >
+              <h3 className="text-lg font-semibold text-gray-100 mb-2">
+                {card.hook}
+              </h3>
+              <p className="text-sm text-gray-400 leading-relaxed">
+                {card.detail}
+              </p>
+            </div>
           ))}
         </div>
-
-        {/* Address Input + Submit */}
-        <form onSubmit={handleSubmit} className="space-y-4 mb-8">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">
-              Safe Wallet Address
-            </label>
-            <input
-              type="text"
-              placeholder="0x..."
-              value={safeAddress}
-              onChange={(e) => setSafeAddress(e.target.value)}
-              className="w-full px-4 py-2.5 bg-gray-900 border border-gray-700 rounded-lg
-                         text-white placeholder-gray-500
-                         focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500
-                         font-mono text-sm"
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setSafeAddress(SAMPLE_SAFE)}
-              className="mt-1.5 text-xs text-blue-400 hover:text-blue-300 transition"
-            >
-              Try a sample address
-            </button>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading || !safeAddress}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700
-                       disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed
-                       rounded-lg font-medium transition text-sm"
-          >
-            {loading ? "Analyzing with AI..." : "Run Free Audit"}
-          </button>
-        </form>
-
-        {error && (
-          <div className="p-4 bg-red-900/40 border border-red-800 rounded-lg mb-6">
-            <p className="text-red-300 text-sm">{error}</p>
-          </div>
-        )}
-
-        {report && (
-          <>
-            <ReportCard report={report} />
-            {report.ai_analysis && (
-              <AIAnalysisPanel analysis={report.ai_analysis} />
-            )}
-            {report.recommendations && report.recommendations.length > 0 && (
-              <RecommendationPanel recommendations={report.recommendations} />
-            )}
-          </>
-        )}
       </div>
-    </main>
+    </section>
+  );
+}
+
+function HowItWorksSection() {
+  const steps = [
+    {
+      number: "1",
+      title: "Paste your Safe address",
+      detail:
+        "Works with any Safe wallet on Ethereum. No API keys, no setup, no signup.",
+    },
+    {
+      number: "2",
+      title: "Set your risk rules",
+      detail:
+        "5 built-in rules with sensible defaults. Adjust thresholds with sliders or use ours.",
+    },
+    {
+      number: "3",
+      title: "Get AI-powered analysis",
+      detail:
+        "Instant compliance report + Claude analyzes your risk posture, runs stress tests, and recommends actions.",
+    },
+  ];
+
+  return (
+    <section className="py-16 md:py-24 px-6 md:px-12">
+      <div className="max-w-5xl mx-auto">
+        <h2 className="text-center text-2xl md:text-3xl font-bold mb-4">
+          How It Works
+        </h2>
+        <p className="text-center text-gray-500 text-sm mb-12 max-w-xl mx-auto">
+          From address to actionable insights in three steps
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {steps.map((step, i) => (
+            <div key={i} className="step-connector text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-bold text-lg shrink-0">
+                  {step.number}
+                </div>
+                <h3 className="text-lg font-semibold">{step.title}</h3>
+              </div>
+              <p className="text-sm text-gray-400 leading-relaxed md:pl-[52px]">
+                {step.detail}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeaturesSection() {
+  const rules = [
+    { name: "Single-token concentration cap", desc: "No asset exceeds your set percentage of total value" },
+    { name: "Stablecoin minimum floor", desc: "Ensure operating runway with minimum stablecoin reserves" },
+    { name: "Absolute asset value cap", desc: "Hard USD ceiling on any single token position" },
+    { name: "Transaction size limit", desc: "Spending guardrails on individual transfers" },
+    { name: "Activity monitoring", desc: "Detect dormant wallets with configurable inactivity alerts" },
+  ];
+
+  const aiFeatures = [
+    { name: "Risk posture summary", desc: "Plain-English assessment of your treasury health" },
+    { name: "Stress testing", desc: "\"What if ETH drops 30%?\" — see which rules would break" },
+    { name: "Industry benchmarks", desc: "Compare your allocation to similar-sized treasuries" },
+    { name: "Actionable recommendations", desc: "Specific steps to improve compliance and reduce risk" },
+    { name: "Suggested additional rules", desc: "AI identifies gaps in your current policy" },
+  ];
+
+  return (
+    <section className="py-16 md:py-24 px-6 md:px-12 bg-gray-950/50">
+      <div className="max-w-5xl mx-auto">
+        <h2 className="text-center text-2xl md:text-3xl font-bold mb-4">
+          What AEGIS Checks
+        </h2>
+        <p className="text-center text-gray-500 text-sm mb-12 max-w-xl mx-auto">
+          Deterministic rules for instant compliance, AI analysis for deeper insight
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
+          {/* Deterministic Rules Column */}
+          <div>
+            <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              Deterministic Rules
+            </h3>
+            <div className="space-y-3">
+              {rules.map((r, i) => (
+                <div key={i} className="flex gap-3 items-start">
+                  <span className="text-green-400 mt-0.5 shrink-0">&#10003;</span>
+                  <div>
+                    <p className="text-sm font-medium text-gray-200">{r.name}</p>
+                    <p className="text-xs text-gray-500">{r.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* AI Analysis Column */}
+          <div>
+            <h3 className="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-purple-400" />
+              AI Analysis
+            </h3>
+            <div className="space-y-3">
+              {aiFeatures.map((f, i) => (
+                <div key={i} className="flex gap-3 items-start">
+                  <span className="text-purple-400 mt-0.5 shrink-0">&#9733;</span>
+                  <div>
+                    <p className="text-sm font-medium text-gray-200">{f.name}</p>
+                    <p className="text-xs text-gray-500">{f.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CredibilityStrip() {
+  return (
+    <section className="py-8 px-6 md:px-12 border-y border-gray-800/50">
+      <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 text-center">
+        <span className="text-xs text-gray-500">
+          Built for treasuries in the <span className="text-gray-300 font-medium">$250K&ndash;$10M</span> range
+        </span>
+        <span className="hidden md:block text-gray-800">|</span>
+        <span className="text-xs text-gray-500">
+          Testing with <span className="text-gray-300 font-medium">live stablecoin portfolios</span>
+        </span>
+        <span className="hidden md:block text-gray-800">|</span>
+        <span className="text-xs text-gray-500">
+          <span className="text-gray-300 font-medium">Advisory mode</span> — zero autonomous execution
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function CTAFooter() {
+  return (
+    <section className="py-16 md:py-24 px-6 md:px-12 bg-gray-950/50">
+      <div className="max-w-2xl mx-auto text-center">
+        <h2 className="text-2xl md:text-3xl font-bold mb-3">
+          Want continuous monitoring?
+        </h2>
+        <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+          We&apos;re building AEGIS Pro — automated policy enforcement for DAO
+          treasuries with real-time alerts, scheduled audits, and multi-chain
+          support.
+        </p>
+        <a
+          href="https://x.com/AegisAudit"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block px-8 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg
+                     font-semibold transition text-sm shadow-lg shadow-blue-600/20"
+        >
+          Get Early Access
+        </a>
+        <p className="mt-10 text-xs text-gray-600">
+          Built by Arlen Rios
+        </p>
+      </div>
+    </section>
   );
 }
 
