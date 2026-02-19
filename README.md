@@ -97,6 +97,47 @@ Document all signals. Write honest post-mortem. Decide: continue / pivot / kill.
 
 ---
 
+## Live Demo
+
+- **Frontend:** https://frontend-drab-three-76.vercel.app
+- **Backend API:** https://aegis-production-acdc.up.railway.app
+- **API Docs:** https://aegis-production-acdc.up.railway.app/docs
+
+## Quick Start
+
+### CLI
+
+```bash
+pip install httpx pyyaml
+python validate.py --safe 0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52 --policy backend/policy.yaml --pretty
+```
+
+### API
+
+```bash
+curl -X POST https://aegis-production-acdc.up.railway.app/validate \
+  -F "safe_address=0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52" \
+  -F "policy_file=@backend/policy.yaml"
+```
+
+### Local Development
+
+```bash
+# Backend
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+# Frontend
+cd frontend
+npm install
+npm run dev
+```
+
+Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` for local dev.
+
+---
+
 ## Kill Criteria
 
 | Trigger | Action |
