@@ -775,7 +775,7 @@ function HeroSection() {
               </a>
               <span className="text-xs px-3 py-1.5 bg-purple-900/30 text-purple-300 rounded-full border border-purple-800/40 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-                Powered by Claude AI
+                AI-Powered
               </span>
             </div>
 
@@ -956,7 +956,7 @@ function HowItWorksSection() {
       number: "3",
       title: "Get AI-powered analysis",
       detail:
-        "Instant compliance report + Claude analyzes your risk posture, runs stress tests, and recommends actions.",
+        "Instant compliance report + AI analyzes your risk posture, runs stress tests, and recommends actions.",
     },
   ];
 
@@ -1754,7 +1754,7 @@ function AIAnalysisPanel({ analysis }: { analysis: AIAnalysis }) {
       <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
         AI Risk Analysis
         <span className="text-[10px] px-1.5 py-0.5 bg-purple-900/50 text-purple-300 rounded">
-          Powered by Claude
+          AI-Powered
         </span>
       </h3>
 
