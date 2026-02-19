@@ -15,7 +15,7 @@ from .safe_reader import STABLECOINS, _fetch_eth_price
 
 logger = logging.getLogger(__name__)
 
-ETHERSCAN_API = "https://api.etherscan.io/api"
+ETHERSCAN_API = "https://api.etherscan.io/v2/api"
 ETHERSCAN_KEY = os.getenv("ETHERSCAN_API_KEY", "")
 
 # Cap token discovery to prevent abuse on wallets with thousands of transfers
@@ -38,6 +38,7 @@ async def fetch_eoa_balances(address: str) -> dict | None:
             resp = await client.get(
                 ETHERSCAN_API,
                 params={
+                    "chainid": "1",
                     "module": "account",
                     "action": "balance",
                     "address": address,
@@ -82,6 +83,7 @@ async def fetch_eoa_balances(address: str) -> dict | None:
             resp = await client.get(
                 ETHERSCAN_API,
                 params={
+                    "chainid": "1",
                     "module": "account",
                     "action": "tokentx",
                     "address": address,
@@ -116,6 +118,7 @@ async def fetch_eoa_balances(address: str) -> dict | None:
                 resp = await client.get(
                     ETHERSCAN_API,
                     params={
+                        "chainid": "1",
                         "module": "account",
                         "action": "tokenbalance",
                         "contractaddress": contract,
@@ -176,6 +179,7 @@ async def fetch_eoa_transactions(
             resp = await client.get(
                 ETHERSCAN_API,
                 params={
+                    "chainid": "1",
                     "module": "account",
                     "action": "txlist",
                     "address": address,
