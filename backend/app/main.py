@@ -34,6 +34,7 @@ from .database import (
 )
 from .scheduler import scheduler_loop
 from .notifications import notify_audit_result
+from .webhooks import build_webhook_payload, send_webhook
 
 import yaml
 
@@ -179,6 +180,8 @@ class ClientCreateRequest(BaseModel):
 class ClientUpdateRequest(BaseModel):
     name: str
     description: str | None = None
+    webhook_url: str | None = None
+    webhook_secret: str | None = None
 
 
 class WalletCreateRequest(BaseModel):
@@ -442,11 +445,14 @@ async def update_client_endpoint(
     request: ClientUpdateRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Update a client's name and description."""
+    """Update a client's name, description, and webhook settings."""
     user_id = _get_user_id(user)
     if not await user_can_access_client(user_id, client_id):
         raise HTTPException(status_code=404, detail="Client not found")
-    client = await update_client(client_id, request.name, request.description)
+    client = await update_client(
+        client_id, request.name, request.description,
+        webhook_url=request.webhook_url, webhook_secret=request.webhook_secret,
+    )
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
     return client
@@ -462,6 +468,35 @@ async def delete_client_endpoint(client_id: int, user: dict = Depends(get_curren
     if not deleted:
         raise HTTPException(status_code=404, detail="Client not found")
     return {"success": True}
+
+
+@app.post("/clients/{client_id}/test-webhook")
+async def test_webhook_endpoint(client_id: int, user: dict = Depends(get_current_user)):
+    """Send a test payload to the client's configured webhook URL."""
+    user_id = _get_user_id(user)
+    if not await user_can_access_client(user_id, client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    client = await get_client(client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if not client.get("webhook_url"):
+        raise HTTPException(status_code=400, detail="No webhook URL configured")
+
+    test_payload = build_webhook_payload(
+        wallet={"id": 0, "address": "0x0000000000000000000000000000000000000000", "chain": "ethereum", "label": "Test Wallet"},
+        report={
+            "overall_status": "NON-COMPLIANT",
+            "total_usd": 50000,
+            "results": [{"rule": "test_rule", "name": "Test Rule", "passed": False, "severity": "warning", "detail": "This is a test webhook delivery."}],
+        },
+        audit_id=0,
+        trigger="test",
+    )
+
+    success = await send_webhook(client["webhook_url"], client.get("webhook_secret"), test_payload)
+    if not success:
+        raise HTTPException(status_code=502, detail="Webhook delivery failed — check the URL and try again")
+    return {"success": True, "message": "Test webhook delivered"}
 
 
 # --- Wallet endpoints (protected, scoped through clients) ---

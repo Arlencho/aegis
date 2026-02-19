@@ -198,6 +198,17 @@ async def init_db():
                     ON notifications (user_id, is_read, created_at DESC)
             """)
 
+            # --- Webhook columns on clients ---
+            try:
+                await conn.execute("""
+                    ALTER TABLE clients ADD COLUMN IF NOT EXISTS webhook_url TEXT
+                """)
+                await conn.execute("""
+                    ALTER TABLE clients ADD COLUMN IF NOT EXISTS webhook_secret TEXT
+                """)
+            except Exception:
+                pass
+
             # --- Migration: move old wallets (user_id-based) to client model ---
             # Check if the old wallets table has a user_id column
             has_user_id_col = await conn.fetchval("""
@@ -524,7 +535,9 @@ async def get_client(client_id: int) -> dict | None:
         return None
     try:
         row = await _pool.fetchrow(
-            """SELECT id, user_id, org_id, name, description, created_at, updated_at
+            """SELECT id, user_id, org_id, name, description,
+                      webhook_url, webhook_secret,
+                      created_at, updated_at
                  FROM clients WHERE id = $1""",
             client_id,
         )
@@ -534,16 +547,24 @@ async def get_client(client_id: int) -> dict | None:
         return None
 
 
-async def update_client(client_id: int, name: str, description: str | None = None) -> dict | None:
-    """Update a client's name and description."""
+async def update_client(
+    client_id: int, name: str, description: str | None = None,
+    webhook_url: str | None = None, webhook_secret: str | None = None,
+) -> dict | None:
+    """Update a client's name, description, and webhook settings."""
     if not _pool:
         return None
     try:
         row = await _pool.fetchrow(
-            """UPDATE clients SET name = $2, description = $3, updated_at = NOW()
+            """UPDATE clients
+               SET name = $2, description = $3,
+                   webhook_url = $4, webhook_secret = $5,
+                   updated_at = NOW()
                WHERE id = $1
-               RETURNING id, user_id, org_id, name, description, created_at, updated_at""",
-            client_id, name, description,
+               RETURNING id, user_id, org_id, name, description,
+                         webhook_url, webhook_secret,
+                         created_at, updated_at""",
+            client_id, name, description, webhook_url, webhook_secret,
         )
         return dict(row) if row else None
     except Exception as e:
@@ -581,6 +602,25 @@ async def user_can_access_client(user_id: int, client_id: int) -> bool:
     except Exception as e:
         logger.error(f"Client access check failed: {e}")
         return False
+
+
+async def get_client_for_wallet(wallet_id: int) -> dict | None:
+    """Get the client (with webhook fields) that owns a given wallet."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """SELECT c.id, c.user_id, c.org_id, c.name, c.description,
+                      c.webhook_url, c.webhook_secret
+                 FROM clients c
+                 JOIN wallets w ON w.client_id = c.id
+                WHERE w.id = $1""",
+            wallet_id,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Client-for-wallet lookup failed: {e}")
+        return None
 
 
 SCHEDULE_INTERVALS = {

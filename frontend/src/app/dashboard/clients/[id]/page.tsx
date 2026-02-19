@@ -23,6 +23,13 @@ export default function ClientDetailPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [auditing, setAuditing] = useState<number | null>(null);
+  const [webhookOpen, setWebhookOpen] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [webhookSaving, setWebhookSaving] = useState(false);
+  const [webhookTesting, setWebhookTesting] = useState(false);
+  const [webhookMsg, setWebhookMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   function authHeaders(): Record<string, string> {
     if (session?.accessToken) return { Authorization: `Bearer ${session.accessToken}` };
@@ -35,7 +42,12 @@ export default function ClientDetailPage() {
         fetch(`${API_URL}/clients/${clientId}`, { headers: authHeaders() }),
         fetch(`${API_URL}/wallets?client_id=${clientId}`, { headers: authHeaders() }),
       ]);
-      if (clientRes.ok) setClient(await clientRes.json());
+      if (clientRes.ok) {
+        const c = await clientRes.json();
+        setClient(c);
+        setWebhookUrl(c.webhook_url || "");
+        setWebhookSecret(c.webhook_secret || "");
+      }
       if (walletsRes.ok) {
         const data = await walletsRes.json();
         setWallets(data.wallets || []);
@@ -129,6 +141,52 @@ export default function ClientDetailPage() {
       if (res.ok) await fetchData();
     } catch {
       // silently fail
+    }
+  }
+
+  async function handleWebhookSave() {
+    if (!client) return;
+    setWebhookSaving(true);
+    setWebhookMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/clients/${clientId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          name: client.name,
+          description: client.description,
+          webhook_url: webhookUrl || null,
+          webhook_secret: webhookSecret || null,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      const updated = await res.json();
+      setClient(updated);
+      setWebhookMsg({ ok: true, text: "Webhook settings saved." });
+    } catch {
+      setWebhookMsg({ ok: false, text: "Failed to save webhook settings." });
+    } finally {
+      setWebhookSaving(false);
+    }
+  }
+
+  async function handleWebhookTest() {
+    setWebhookTesting(true);
+    setWebhookMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/clients/${clientId}/test-webhook`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Delivery failed" }));
+        throw new Error(err.detail);
+      }
+      setWebhookMsg({ ok: true, text: "Test webhook delivered!" });
+    } catch (err: unknown) {
+      setWebhookMsg({ ok: false, text: err instanceof Error ? err.message : "Test failed" });
+    } finally {
+      setWebhookTesting(false);
     }
   }
 
@@ -339,6 +397,112 @@ export default function ClientDetailPage() {
           ))}
         </div>
       )}
+
+      {/* Webhook Settings */}
+      <div className="mt-8 border border-gray-800 rounded-lg overflow-hidden">
+        <button
+          onClick={() => setWebhookOpen(!webhookOpen)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-gray-900/50
+                     hover:bg-gray-900 transition text-left min-h-[48px]"
+        >
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.06a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.34 8.374" />
+            </svg>
+            <span className="text-sm font-medium text-gray-300">Webhook Settings</span>
+            {client.webhook_url && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-400/10 text-green-400 font-medium">
+                Active
+              </span>
+            )}
+          </div>
+          <svg
+            className={`w-4 h-4 text-gray-500 transition-transform ${webhookOpen ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+
+        {webhookOpen && (
+          <div className="border-t border-gray-800 px-4 py-4 space-y-3">
+            <p className="text-xs text-gray-500">
+              Receive a POST request when audits detect failures or elevated risk. Works with Discord, Slack, or any HTTP endpoint.
+            </p>
+
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Webhook URL</label>
+              <input
+                type="url"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="https://discord.com/api/webhooks/..."
+                className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg
+                           text-white placeholder-gray-500 text-sm min-h-[44px] font-mono
+                           focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Signing Secret (optional)</label>
+              <div className="relative">
+                <input
+                  type={showSecret ? "text" : "password"}
+                  value={webhookSecret}
+                  onChange={(e) => setWebhookSecret(e.target.value)}
+                  placeholder="Used to verify webhook authenticity"
+                  className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg
+                             text-white placeholder-gray-500 text-sm min-h-[44px] font-mono pr-10
+                             focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSecret(!showSecret)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-300"
+                >
+                  {showSecret ? (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {webhookMsg && (
+              <p className={`text-xs ${webhookMsg.ok ? "text-green-400" : "text-red-400"}`}>
+                {webhookMsg.text}
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleWebhookSave}
+                disabled={webhookSaving}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm
+                           font-medium transition min-h-[40px] disabled:opacity-50"
+              >
+                {webhookSaving ? "Saving..." : "Save"}
+              </button>
+              {client.webhook_url && (
+                <button
+                  onClick={handleWebhookTest}
+                  disabled={webhookTesting}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm
+                             text-gray-300 transition min-h-[40px] disabled:opacity-50"
+                >
+                  {webhookTesting ? "Sending..." : "Test Webhook"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

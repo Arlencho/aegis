@@ -100,6 +100,8 @@ export interface Client {
   org_id: number | null;
   name: string;
   description: string | null;
+  webhook_url: string | null;
+  webhook_secret: string | null;
   wallet_count?: number;
   created_at: string;
 }

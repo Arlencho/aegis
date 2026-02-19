@@ -1,10 +1,11 @@
-"""In-app notification creation for audit events."""
+"""In-app notification creation + webhook dispatch for audit events."""
 
 from __future__ import annotations
 
 import logging
 
-from .database import create_notifications_for_wallet
+from .database import create_notifications_for_wallet, get_client_for_wallet
+from .webhooks import build_webhook_payload, send_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ async def notify_audit_result(
 
     ntype = "audit_alert" if fail_count > 0 else "risk_change"
 
+    # --- In-app notifications ---
     try:
         count = await create_notifications_for_wallet(
             wallet_id=wallet_id,
@@ -64,3 +66,18 @@ async def notify_audit_result(
             logger.info(f"Created {count} notification(s) for wallet {wallet_id}")
     except Exception as e:
         logger.error(f"Notification creation failed for wallet {wallet_id}: {e}")
+
+    # --- Webhook dispatch ---
+    try:
+        client = await get_client_for_wallet(wallet_id)
+        if client and client.get("webhook_url"):
+            wallet_data = {
+                "id": wallet_id,
+                "address": wallet_address,
+                "chain": report.get("chain", "ethereum"),
+                "label": wallet_label,
+            }
+            payload = build_webhook_payload(wallet_data, report, audit_id, trigger)
+            await send_webhook(client["webhook_url"], client.get("webhook_secret"), payload)
+    except Exception as e:
+        logger.error(f"Webhook dispatch failed for wallet {wallet_id}: {e}")
