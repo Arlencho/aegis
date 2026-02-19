@@ -10,7 +10,8 @@ import anthropic
 
 logger = logging.getLogger(__name__)
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+def _get_api_key() -> str:
+    return os.getenv("ANTHROPIC_API_KEY", "")
 
 
 def _build_prompt(balances: dict, report: dict) -> str:
@@ -59,12 +60,13 @@ Respond with ONLY valid JSON, no markdown formatting or code blocks."""
 
 async def analyze_treasury(balances: dict, report: dict) -> dict | None:
     """Run AI analysis on treasury data. Returns analysis dict or None on failure."""
-    if not ANTHROPIC_API_KEY:
+    api_key = _get_api_key()
+    if not api_key:
         logger.warning("ANTHROPIC_API_KEY not set — skipping AI analysis")
         return None
 
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        client = anthropic.Anthropic(api_key=api_key)
         prompt = _build_prompt(balances, report)
 
         message = client.messages.create(
