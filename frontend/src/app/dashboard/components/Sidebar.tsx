@@ -14,6 +14,14 @@ const NAV_ITEMS = [
   { href: "/dashboard/settings", label: "Settings", icon: "settings" },
 ];
 
+const MOBILE_NAV_ITEMS = [
+  { href: "/dashboard", label: "Overview", icon: "grid" },
+  { href: "/dashboard/clients", label: "Clients", icon: "clients" },
+  { href: "/dashboard/wallets", label: "Wallets", icon: "wallet" },
+  { href: "/dashboard/history", label: "History", icon: "clock" },
+  { href: "/dashboard/settings", label: "Settings", icon: "settings" },
+];
+
 const ICONS: Record<string, React.ReactNode> = {
   grid: (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -106,7 +114,7 @@ export default function Sidebar({ userName }: { userName?: string | null }) {
       {/* Mobile bottom navigation */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 bg-gray-950 border-t border-gray-800 z-50">
         <div className="flex justify-around py-2">
-          {NAV_ITEMS.map((item) => {
+          {MOBILE_NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href;
             return (
               <Link

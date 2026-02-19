@@ -3,7 +3,7 @@
 import { useState, useEffect, FormEvent } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import type { Client } from "../../components/types";
+import type { Client, Organization } from "../../components/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -17,6 +17,8 @@ export default function ClientsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [orgs, setOrgs] = useState<Organization[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState<number | null>(null);
 
   async function fetchClients() {
     try {
@@ -36,8 +38,29 @@ export default function ClientsPage() {
     }
   }
 
+  async function fetchOrgs() {
+    try {
+      const res = await fetch(`${API_URL}/orgs`, {
+        headers: session?.accessToken
+          ? { Authorization: `Bearer ${session.accessToken}` }
+          : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOrgs(
+          (data.organizations || []).filter(
+            (o: Organization) => o.role === "owner" || o.role === "admin"
+          )
+        );
+      }
+    } catch {
+      // silently fail
+    }
+  }
+
   useEffect(() => {
     fetchClients();
+    fetchOrgs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
@@ -55,7 +78,7 @@ export default function ClientsPage() {
             ? { Authorization: `Bearer ${session.accessToken}` }
             : {}),
         },
-        body: JSON.stringify({ name, description: description || undefined }),
+        body: JSON.stringify({ name, description: description || undefined, org_id: selectedOrgId || undefined }),
       });
 
       if (!res.ok) {
@@ -65,6 +88,7 @@ export default function ClientsPage() {
 
       setName("");
       setDescription("");
+      setSelectedOrgId(null);
       setShowForm(false);
       await fetchClients();
     } catch (err: unknown) {
@@ -127,6 +151,20 @@ export default function ClientsPage() {
                          focus:outline-none focus:border-blue-500"
               required
             />
+            {orgs.length > 0 && (
+              <select
+                value={selectedOrgId ?? ""}
+                onChange={(e) => setSelectedOrgId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-lg
+                           text-white text-sm min-h-[44px]
+                           focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Personal (just me)</option>
+                {orgs.map((org) => (
+                  <option key={org.id} value={org.id}>{org.name}</option>
+                ))}
+              </select>
+            )}
             <input
               type="text"
               value={description}
@@ -201,11 +239,20 @@ export default function ClientsPage() {
                 href={`/dashboard/clients/${client.id}`}
                 className="min-w-0 flex-1 hover:opacity-80 transition"
               >
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className="text-sm font-medium text-white">{client.name}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 font-medium">
                     {client.wallet_count ?? 0} wallet{(client.wallet_count ?? 0) !== 1 ? "s" : ""}
                   </span>
+                  {client.org_id ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-400/10 text-purple-400 font-medium">
+                      {orgs.find((o) => o.id === client.org_id)?.name || "Org"}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 font-medium">
+                      Personal
+                    </span>
+                  )}
                 </div>
                 {client.description && (
                   <p className="text-xs text-gray-500 truncate">{client.description}</p>

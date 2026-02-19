@@ -132,61 +132,108 @@ export default function HistoryPage() {
           <p className="text-gray-500 text-sm">No audits yet. Add a wallet and run your first audit.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-800 text-gray-500 text-xs uppercase tracking-wider">
-                <th className="text-left py-3 px-3">Date</th>
-                <th className="text-left py-3 px-3">Chain</th>
-                <th className="text-left py-3 px-3">Status</th>
-                <th className="text-right py-3 px-3">Value</th>
-                <th className="text-right py-3 px-3">Rules</th>
-                <th className="text-left py-3 px-3">Risk</th>
-              </tr>
-            </thead>
-            <tbody>
-              {audits.map((audit) => (
-                <tr
-                  key={audit.id}
-                  onClick={() => router.push(`/dashboard/audits/${audit.id}`)}
-                  className="border-b border-gray-800/50 hover:bg-gray-900/50 cursor-pointer transition"
-                >
-                  <td className="py-3 px-3 text-gray-400">
-                    {new Date(audit.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="py-3 px-3">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
-                      ${audit.chain === "ethereum" ? "bg-blue-400/10 text-blue-400" : "bg-purple-400/10 text-purple-400"}`}>
-                      {audit.chain}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3">
-                    <span className={`text-xs font-medium
-                      ${audit.overall_status === "COMPLIANT" ? "text-green-400" : "text-red-400"}`}>
-                      {audit.overall_status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 text-right text-gray-300 font-mono">
+        <>
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {audits.map((audit) => (
+              <div
+                key={audit.id}
+                onClick={() => router.push(`/dashboard/audits/${audit.id}`)}
+                className="bg-gray-900 border border-gray-800 rounded-lg p-4 cursor-pointer
+                           hover:border-gray-700 transition active:bg-gray-800/50"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
+                    ${audit.chain === "ethereum" ? "bg-blue-400/10 text-blue-400" : "bg-purple-400/10 text-purple-400"}`}>
+                    {audit.chain}
+                  </span>
+                  <span className={`text-xs font-medium
+                    ${audit.overall_status === "COMPLIANT" ? "text-green-400" : "text-red-400"}`}>
+                    {audit.overall_status}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-300 font-mono">
                     ${Number(audit.total_usd).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                  </td>
-                  <td className="py-3 px-3 text-right text-gray-400">
-                    {audit.passed}/{audit.total_rules}
-                  </td>
-                  <td className="py-3 px-3">
-                    {audit.risk_level && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
-                        ${audit.risk_level === "low" ? "bg-green-400/10 text-green-400"
-                          : audit.risk_level === "medium" ? "bg-yellow-400/10 text-yellow-400"
-                          : "bg-red-400/10 text-red-400"}`}>
-                        {audit.risk_level}
-                      </span>
-                    )}
-                  </td>
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {audit.passed}/{audit.total_rules} rules passed
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-gray-500">
+                    {new Date(audit.created_at).toLocaleDateString()}
+                  </span>
+                  {audit.risk_level && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
+                      ${audit.risk_level === "low" ? "bg-green-400/10 text-green-400"
+                        : audit.risk_level === "medium" ? "bg-yellow-400/10 text-yellow-400"
+                        : "bg-red-400/10 text-red-400"}`}>
+                      {audit.risk_level}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800 text-gray-500 text-xs uppercase tracking-wider">
+                  <th className="text-left py-3 px-3">Date</th>
+                  <th className="text-left py-3 px-3">Chain</th>
+                  <th className="text-left py-3 px-3">Status</th>
+                  <th className="text-right py-3 px-3">Value</th>
+                  <th className="text-right py-3 px-3">Rules</th>
+                  <th className="text-left py-3 px-3">Risk</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {audits.map((audit) => (
+                  <tr
+                    key={audit.id}
+                    onClick={() => router.push(`/dashboard/audits/${audit.id}`)}
+                    className="border-b border-gray-800/50 hover:bg-gray-900/50 cursor-pointer transition"
+                  >
+                    <td className="py-3 px-3 text-gray-400">
+                      {new Date(audit.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
+                        ${audit.chain === "ethereum" ? "bg-blue-400/10 text-blue-400" : "bg-purple-400/10 text-purple-400"}`}>
+                        {audit.chain}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`text-xs font-medium
+                        ${audit.overall_status === "COMPLIANT" ? "text-green-400" : "text-red-400"}`}>
+                        {audit.overall_status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-right text-gray-300 font-mono">
+                      ${Number(audit.total_usd).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="py-3 px-3 text-right text-gray-400">
+                      {audit.passed}/{audit.total_rules}
+                    </td>
+                    <td className="py-3 px-3">
+                      {audit.risk_level && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
+                          ${audit.risk_level === "low" ? "bg-green-400/10 text-green-400"
+                            : audit.risk_level === "medium" ? "bg-yellow-400/10 text-yellow-400"
+                            : "bg-red-400/10 text-red-400"}`}>
+                          {audit.risk_level}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

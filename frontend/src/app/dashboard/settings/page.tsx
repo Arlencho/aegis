@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, signOut } from "next-auth/react";
+import Link from "next/link";
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -43,6 +44,24 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {/* Team & Organizations */}
+      <Link
+        href="/dashboard/team"
+        className="bg-gray-900 border border-gray-800 rounded-lg p-5 mb-6 flex items-center justify-between
+                   hover:border-gray-700 transition group"
+      >
+        <div>
+          <h2 className="text-sm font-semibold text-gray-300 mb-1">Team & Organizations</h2>
+          <p className="text-xs text-gray-500">Manage your team members and org settings</p>
+        </div>
+        <svg
+          className="w-5 h-5 text-gray-500 group-hover:text-gray-300 transition"
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+        </svg>
+      </Link>
 
       {/* Danger zone */}
       <div className="bg-gray-900 border border-red-900/30 rounded-lg p-5">
