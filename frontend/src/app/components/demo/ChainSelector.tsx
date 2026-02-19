@@ -9,7 +9,8 @@ const CHAIN_COLORS: Record<Chain, string> = {
   polygon: "bg-violet-600/20 border-violet-500 text-violet-300",
 };
 
-const CHAINS: Chain[] = ["ethereum", "base", "arbitrum", "polygon", "solana"];
+const ACTIVE_CHAINS: Chain[] = ["ethereum", "solana"];
+const COMING_SOON_CHAINS: Chain[] = ["base", "arbitrum", "polygon"];
 
 export default function ChainSelector({
   chain,
@@ -20,7 +21,7 @@ export default function ChainSelector({
 }) {
   return (
     <div className="flex flex-wrap gap-2 mb-6">
-      {CHAINS.map((c) => (
+      {ACTIVE_CHAINS.map((c) => (
         <button
           key={c}
           type="button"
@@ -32,6 +33,18 @@ export default function ChainSelector({
           }`}
         >
           {CHAIN_CONFIG[c].name}
+        </button>
+      ))}
+      {COMING_SOON_CHAINS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          disabled
+          className="px-3 py-2 rounded-lg text-sm font-medium border min-h-[44px]
+                     bg-gray-900/30 border-gray-800/50 text-gray-700 cursor-not-allowed"
+        >
+          {CHAIN_CONFIG[c].name}
+          <span className="text-[9px] ml-1 text-gray-600">Soon</span>
         </button>
       ))}
     </div>
