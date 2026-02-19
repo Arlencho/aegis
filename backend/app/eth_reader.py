@@ -25,6 +25,22 @@ MAX_TOKENS = 20
 # Etherscan free tier: 5 calls/sec. We add a small delay between calls.
 ETHERSCAN_DELAY = 0.25
 
+# Etherscan V2 chain IDs for EVM chains
+CHAIN_IDS: dict[str, str] = {
+    "ethereum": "1",
+    "base": "8453",
+    "arbitrum": "42161",
+    "polygon": "137",
+}
+
+# Native token symbols per chain
+NATIVE_TOKENS: dict[str, str] = {
+    "ethereum": "ETH",
+    "base": "ETH",
+    "arbitrum": "ETH",
+    "polygon": "POL",
+}
+
 
 def _safe_int(value: str, default: int = 0) -> int:
     """Parse an int from Etherscan, returning default if the result is an error string."""
@@ -34,23 +50,26 @@ def _safe_int(value: str, default: int = 0) -> int:
         return default
 
 
-async def fetch_eoa_balances(address: str) -> dict | None:
-    """Fetch native ETH + ERC-20 token balances for a regular Ethereum address.
+async def fetch_eoa_balances(address: str, chain: str = "ethereum") -> dict | None:
+    """Fetch native token + ERC-20 token balances for an EVM address.
 
-    Uses Etherscan API to discover tokens via recent transfers, then queries
-    individual token balances. Returns same shape as safe_reader.fetch_safe_balances().
+    Supports Ethereum, Base, Arbitrum, and Polygon via Etherscan V2 API.
+    Returns same shape as safe_reader.fetch_safe_balances().
     """
     if not ETHERSCAN_KEY:
         logger.warning("ETHERSCAN_API_KEY not set — EOA reader disabled")
         return None
 
+    chainid = CHAIN_IDS.get(chain, "1")
+    native_symbol = NATIVE_TOKENS.get(chain, "ETH")
+
     async with httpx.AsyncClient(timeout=30) as client:
-        # 1. Get native ETH balance
+        # 1. Get native token balance
         try:
             resp = await client.get(
                 ETHERSCAN_API,
                 params={
-                    "chainid": "1",
+                    "chainid": chainid,
                     "module": "account",
                     "action": "balance",
                     "address": address,
@@ -71,19 +90,19 @@ async def fetch_eoa_balances(address: str) -> dict | None:
         eth_balance_wei = _safe_int(data.get("result", "0"))
         eth_balance = eth_balance_wei / 1e18
 
-        # 2. Fetch ETH price
+        # 2. Fetch ETH price (used for ETH-based L2s too)
         eth_price = await _fetch_eth_price(client)
-        eth_usd = eth_balance * eth_price
+        native_usd = eth_balance * eth_price
 
         tokens = []
-        total_usd = eth_usd
+        total_usd = native_usd
 
-        # Add native ETH
+        # Add native token
         if eth_balance > 0:
             tokens.append({
-                "symbol": "ETH",
+                "symbol": native_symbol,
                 "balance": eth_balance,
-                "usd_value": eth_usd,
+                "usd_value": native_usd,
                 "is_stablecoin": False,
                 "address": None,
                 "decimals": 18,
@@ -95,7 +114,7 @@ async def fetch_eoa_balances(address: str) -> dict | None:
             resp = await client.get(
                 ETHERSCAN_API,
                 params={
-                    "chainid": "1",
+                    "chainid": chainid,
                     "module": "account",
                     "action": "tokentx",
                     "address": address,
@@ -131,7 +150,7 @@ async def fetch_eoa_balances(address: str) -> dict | None:
                 resp = await client.get(
                     ETHERSCAN_API,
                     params={
-                        "chainid": "1",
+                        "chainid": chainid,
                         "module": "account",
                         "action": "tokenbalance",
                         "contractaddress": contract,
@@ -179,21 +198,24 @@ async def fetch_eoa_balances(address: str) -> dict | None:
 
 
 async def fetch_eoa_transactions(
-    address: str, limit: int = 20
+    address: str, limit: int = 20, chain: str = "ethereum"
 ) -> list[dict] | None:
-    """Fetch recent transactions for a regular Ethereum address.
+    """Fetch recent transactions for an EVM address.
 
+    Supports Ethereum, Base, Arbitrum, and Polygon via Etherscan V2 API.
     Returns same shape as safe_reader.fetch_safe_transactions().
     """
     if not ETHERSCAN_KEY:
         return None
+
+    chainid = CHAIN_IDS.get(chain, "1")
 
     async with httpx.AsyncClient(timeout=30) as client:
         try:
             resp = await client.get(
                 ETHERSCAN_API,
                 params={
-                    "chainid": "1",
+                    "chainid": chainid,
                     "module": "account",
                     "action": "txlist",
                     "address": address,

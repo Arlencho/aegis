@@ -87,7 +87,7 @@ export interface Wallet {
   created_at: string;
 }
 
-export type Chain = "ethereum" | "solana";
+export type Chain = "ethereum" | "solana" | "base" | "arbitrum" | "polygon";
 
 export interface Scenario {
   id: string;

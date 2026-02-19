@@ -288,6 +288,55 @@ async def update_wallet_audit(wallet_id: int, risk_level: str | None) -> None:
         logger.error(f"Wallet audit update failed: {e}")
 
 
+# --- Dashboard Stats ---
+
+
+async def get_dashboard_stats(user_id: int) -> dict:
+    """Return aggregate dashboard stats for a user."""
+    if not _pool:
+        return {"wallet_count": 0, "audit_count": 0, "latest_risk": None, "wallets": []}
+    try:
+        # Wallet count + data
+        wallet_rows = await _pool.fetch(
+            """SELECT id, address, chain, label, last_audit_at, last_risk_level, created_at
+                 FROM wallets WHERE user_id = $1 ORDER BY created_at DESC""",
+            user_id,
+        )
+        wallets = [dict(r) for r in wallet_rows]
+
+        # Total audit count across user's wallets
+        audit_count = 0
+        if wallets:
+            addresses = [w["address"] for w in wallets]
+            audit_count = await _pool.fetchval(
+                """SELECT COUNT(*) FROM audit_history
+                   WHERE wallet_address = ANY($1::text[])""",
+                addresses,
+            )
+
+        # Latest risk level from most recent audit across all wallets
+        latest_risk = None
+        if wallets:
+            addresses = [w["address"] for w in wallets]
+            latest_risk = await _pool.fetchval(
+                """SELECT risk_level FROM audit_history
+                   WHERE wallet_address = ANY($1::text[])
+                     AND risk_level IS NOT NULL
+                   ORDER BY created_at DESC LIMIT 1""",
+                addresses,
+            )
+
+        return {
+            "wallet_count": len(wallets),
+            "audit_count": audit_count or 0,
+            "latest_risk": latest_risk,
+            "wallets": wallets,
+        }
+    except Exception as e:
+        logger.error(f"Dashboard stats failed: {e}")
+        return {"wallet_count": 0, "audit_count": 0, "latest_risk": None, "wallets": []}
+
+
 # --- Waitlist ---
 
 

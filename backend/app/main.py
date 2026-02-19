@@ -24,7 +24,7 @@ from .database import (
     save_audit, get_audit_history, get_audit_detail,
     create_user, get_user_by_email, get_user_by_id,
     create_wallet, get_wallets, get_wallet, update_wallet, delete_wallet,
-    update_wallet_audit,
+    update_wallet_audit, get_dashboard_stats,
 )
 
 import yaml
@@ -67,20 +67,27 @@ def _check_rate_limit(client_ip: str) -> bool:
 
 # --- Ethereum balance fetching with Smart fallback ---
 
-async def _fetch_eth_balances(address: str) -> dict | None:
-    """Try Safe API first, fall back to Etherscan for regular wallets."""
-    balances = await fetch_safe_balances(address)
-    if balances is not None:
-        return balances
-    return await fetch_eoa_balances(address)
+EVM_CHAINS = {"ethereum", "base", "arbitrum", "polygon"}
 
 
-async def _fetch_eth_transactions(address: str, limit: int = 20) -> list[dict] | None:
-    """Try Safe API first, fall back to Etherscan for regular wallets."""
-    txs = await fetch_safe_transactions(address, limit=limit)
-    if txs is not None:
-        return txs
-    return await fetch_eoa_transactions(address, limit=limit)
+async def _fetch_evm_balances(address: str, chain: str = "ethereum") -> dict | None:
+    """For Ethereum: try Safe API first, fall back to Etherscan.
+    For L2s (Base, Arbitrum, Polygon): use Etherscan directly."""
+    if chain == "ethereum":
+        balances = await fetch_safe_balances(address)
+        if balances is not None:
+            return balances
+    return await fetch_eoa_balances(address, chain=chain)
+
+
+async def _fetch_evm_transactions(address: str, limit: int = 20, chain: str = "ethereum") -> list[dict] | None:
+    """For Ethereum: try Safe API first, fall back to Etherscan.
+    For L2s: use Etherscan directly."""
+    if chain == "ethereum":
+        txs = await fetch_safe_transactions(address, limit=limit)
+        if txs is not None:
+            return txs
+    return await fetch_eoa_transactions(address, limit=limit, chain=chain)
 
 
 # --- App setup ---
@@ -327,8 +334,8 @@ async def audit_wallet(
         balances = await fetch_solana_balances(address)
         transactions = await fetch_solana_transactions(address, limit=10) if balances else None
     else:
-        balances = await _fetch_eth_balances(address)
-        transactions = await _fetch_eth_transactions(address, limit=20) if balances else None
+        balances = await _fetch_evm_balances(address, chain=chain)
+        transactions = await _fetch_evm_transactions(address, limit=20, chain=chain) if balances else None
 
     if balances is None:
         raise HTTPException(status_code=404, detail=f"Could not fetch balances for {address}")
@@ -348,6 +355,14 @@ async def audit_wallet(
     await update_wallet_audit(wallet_id, risk_level)
 
     return report
+
+
+@app.get("/dashboard/overview")
+async def dashboard_overview(user: dict = Depends(get_current_user)):
+    """Get dashboard overview stats for the logged-in user."""
+    user_id = int(user.get("sub", user.get("id", 0)))
+    stats = await get_dashboard_stats(user_id)
+    return stats
 
 
 @app.get("/dashboard/history")
@@ -446,7 +461,7 @@ async def validate(
         raise HTTPException(status_code=400, detail="Policy must contain 'rules' key")
 
     # Fetch balances (Safe first, then Etherscan fallback)
-    balances = await _fetch_eth_balances(safe_address)
+    balances = await _fetch_evm_balances(safe_address)
     if balances is None:
         raise HTTPException(
             status_code=404,
@@ -454,7 +469,7 @@ async def validate(
         )
 
     # Fetch transaction history
-    transactions = await _fetch_eth_transactions(safe_address, limit=20)
+    transactions = await _fetch_evm_transactions(safe_address, limit=20)
 
     # Run validation
     report = validate_policy(balances, policy["rules"], transactions=transactions)
@@ -481,9 +496,11 @@ async def validate_json(request: ValidateRequest, req: Request):
     if request.chain == "solana":
         if not _validate_solana_address(request.safe_address):
             raise HTTPException(status_code=400, detail="Invalid Solana address format.")
-    else:
+    elif request.chain in EVM_CHAINS:
         if not _validate_eth_address(request.safe_address):
-            raise HTTPException(status_code=400, detail="Invalid Ethereum address format. Expected 0x followed by 40 hex characters.")
+            raise HTTPException(status_code=400, detail="Invalid address format. Expected 0x followed by 40 hex characters.")
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported chain: {request.chain}")
 
     rules = [r.model_dump() for r in request.rules]
 
@@ -497,15 +514,15 @@ async def validate_json(request: ValidateRequest, req: Request):
             )
         transactions = await fetch_solana_transactions(request.safe_address, limit=10)
     else:
-        # Smart fallback: try Safe API, then Etherscan for regular wallets
-        balances = await _fetch_eth_balances(request.safe_address)
+        # EVM chains: Ethereum uses Safe API fallback, L2s go direct to Etherscan
+        balances = await _fetch_evm_balances(request.safe_address, chain=request.chain)
         if balances is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Could not fetch balances for Ethereum address: {request.safe_address}. "
+                detail=f"Could not fetch balances for {request.chain} address: {request.safe_address}. "
                        "Please verify the address is correct.",
             )
-        transactions = await _fetch_eth_transactions(request.safe_address, limit=20)
+        transactions = await _fetch_evm_transactions(request.safe_address, limit=20, chain=request.chain)
 
     # Run deterministic validation
     report = validate_policy(balances, rules, transactions=transactions)

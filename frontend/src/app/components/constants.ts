@@ -5,11 +5,17 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000
 export const SAMPLE_ADDRESSES: Record<Chain, string> = {
   ethereum: "0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52",
   solana: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+  base: "0x4200000000000000000000000000000000000006",
+  arbitrum: "0x912CE59144191C1204E64559FE8253a0e49E6548",
+  polygon: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
 };
 
 export const CHAIN_CONFIG: Record<Chain, { name: string; placeholder: string; label: string }> = {
   ethereum: { name: "Ethereum", placeholder: "0x...", label: "Wallet Address" },
   solana: { name: "Solana", placeholder: "Base58 address...", label: "Solana Wallet Address" },
+  base: { name: "Base", placeholder: "0x...", label: "Base Wallet Address" },
+  arbitrum: { name: "Arbitrum", placeholder: "0x...", label: "Arbitrum Wallet Address" },
+  polygon: { name: "Polygon", placeholder: "0x...", label: "Polygon Wallet Address" },
 };
 
 export const RULE_CONFIGS: RuleConfig[] = [
