@@ -4,7 +4,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .validator import validate_policy
-from .safe_reader import fetch_safe_balances
+from .safe_reader import fetch_safe_balances, fetch_safe_transactions
 from .alerts import send_alerts
 
 import yaml
@@ -43,8 +43,11 @@ async def validate(safe_address: str = Form(...), policy_file: UploadFile = File
     if balances is None:
         raise HTTPException(status_code=404, detail=f"Could not fetch balances for Safe: {safe_address}")
 
+    # Fetch transaction history
+    transactions = await fetch_safe_transactions(safe_address, limit=20)
+
     # Run validation
-    report = validate_policy(balances, policy["rules"])
+    report = validate_policy(balances, policy["rules"], transactions=transactions)
 
     # Send alerts for failures
     failures = [r for r in report["results"] if not r["passed"]]

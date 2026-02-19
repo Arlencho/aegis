@@ -1,13 +1,18 @@
 """Deterministic policy validator — the core IP of AEGIS."""
 
+from __future__ import annotations
 
-def validate_policy(balances: dict, rules: list[dict]) -> dict:
+from datetime import datetime, timezone
+
+from .safe_reader import build_price_map
+
+
+def validate_policy(balances: dict, rules: list[dict], transactions: list[dict] | None = None) -> dict:
     """Compare live Safe state against policy rules.
 
     Returns a compliance report with pass/fail per rule.
     """
     results = []
-    total_usd = balances["total_usd"]
 
     for rule in rules:
         rule_type = rule["type"]
@@ -21,34 +26,16 @@ def validate_policy(balances: dict, rules: list[dict]) -> dict:
         elif rule_type == "single_asset_cap":
             results.append(_check_single_asset_cap(balances, params, severity))
         elif rule_type == "max_tx_size":
-            # Transaction size is checked against recent txs, not balances
-            # Placeholder — requires transaction history API
-            results.append({
-                "rule": "max_tx_size",
-                "passed": True,
-                "current_value": "N/A (requires tx history)",
-                "threshold": f"${params.get('max_usd', 0):,.0f}",
-                "severity": severity,
-                "detail": "Transaction size monitoring not yet implemented — requires Safe tx history polling",
-            })
+            results.append(_check_max_tx_size(transactions, balances, params, severity))
         elif rule_type == "inactivity_alert":
-            # Inactivity requires last tx timestamp
-            # Placeholder — requires transaction history API
-            results.append({
-                "rule": "inactivity_alert",
-                "passed": True,
-                "current_value": "N/A (requires tx history)",
-                "threshold": f"{params.get('threshold_hours', 0)}h",
-                "severity": severity,
-                "detail": "Inactivity monitoring not yet implemented — requires Safe tx history polling",
-            })
+            results.append(_check_inactivity_alert(transactions, params, severity))
 
     passed_count = sum(1 for r in results if r["passed"])
     total_count = len(results)
 
     return {
         "safe_address": balances["address"],
-        "total_usd": total_usd,
+        "total_usd": balances["total_usd"],
         "overall_status": "COMPLIANT" if passed_count == total_count else "NON-COMPLIANT",
         "passed": passed_count,
         "failed": total_count - passed_count,
@@ -131,14 +118,10 @@ def _check_single_asset_cap(balances: dict, params: dict, severity: str) -> dict
     """Check that no single asset exceeds max_usd absolute value."""
     max_usd = params.get("max_usd", 500000)
 
-    breaches = [
-        t for t in balances["tokens"] if t["usd_value"] > max_usd
-    ]
+    breaches = [t for t in balances["tokens"] if t["usd_value"] > max_usd]
 
     if breaches:
-        detail = ", ".join(
-            f"{t['symbol']}: ${t['usd_value']:,.0f}" for t in breaches
-        )
+        detail = ", ".join(f"{t['symbol']}: ${t['usd_value']:,.0f}" for t in breaches)
         return {
             "rule": "single_asset_cap",
             "passed": False,
@@ -156,3 +139,140 @@ def _check_single_asset_cap(balances: dict, params: dict, severity: str) -> dict
         "severity": severity,
         "detail": "No single asset exceeds absolute USD cap",
     }
+
+
+def _check_max_tx_size(transactions: list[dict] | None, balances: dict, params: dict, severity: str) -> dict:
+    """Check that no recent transaction exceeds max_usd threshold."""
+    max_usd = params.get("max_usd", 100000)
+
+    if transactions is None:
+        return {
+            "rule": "max_tx_size",
+            "passed": True,
+            "current_value": "N/A",
+            "threshold": f"${max_usd:,.0f}",
+            "severity": severity,
+            "detail": "No transaction data available — skipped",
+        }
+
+    if not transactions:
+        return {
+            "rule": "max_tx_size",
+            "passed": True,
+            "current_value": "no recent transactions",
+            "threshold": f"${max_usd:,.0f}",
+            "severity": severity,
+            "detail": "No executed transactions found",
+        }
+
+    prices = build_price_map(balances)
+
+    breaches = []
+    for tx in transactions:
+        estimated_usd = _estimate_tx_usd(tx, balances, prices)
+        if estimated_usd > max_usd:
+            breaches.append({
+                "tx_hash": tx["tx_hash"],
+                "estimated_usd": estimated_usd,
+                "date": tx["execution_date"],
+            })
+
+    if breaches:
+        worst = max(breaches, key=lambda b: b["estimated_usd"])
+        return {
+            "rule": "max_tx_size",
+            "passed": False,
+            "current_value": f"${worst['estimated_usd']:,.0f}",
+            "threshold": f"${max_usd:,.0f}",
+            "severity": severity,
+            "detail": f"{len(breaches)} transaction(s) exceed ${max_usd:,.0f} cap. "
+                      f"Largest: ${worst['estimated_usd']:,.0f} on {worst['date']}",
+        }
+
+    return {
+        "rule": "max_tx_size",
+        "passed": True,
+        "current_value": f"{len(transactions)} recent txs checked",
+        "threshold": f"${max_usd:,.0f}",
+        "severity": severity,
+        "detail": f"All {len(transactions)} recent transactions within ${max_usd:,.0f} cap",
+    }
+
+
+def _check_inactivity_alert(transactions: list[dict] | None, params: dict, severity: str) -> dict:
+    """Check that the Safe has had activity within threshold_hours."""
+    threshold_hours = params.get("threshold_hours", 168)
+
+    if transactions is None:
+        return {
+            "rule": "inactivity_alert",
+            "passed": True,
+            "current_value": "N/A",
+            "threshold": f"{threshold_hours}h",
+            "severity": severity,
+            "detail": "No transaction data available — skipped",
+        }
+
+    if not transactions:
+        return {
+            "rule": "inactivity_alert",
+            "passed": False,
+            "current_value": "no transactions found",
+            "threshold": f"{threshold_hours}h",
+            "severity": severity,
+            "detail": "No executed transactions found — Safe may be inactive or new",
+        }
+
+    # Find most recent execution date
+    latest_date = None
+    for tx in transactions:
+        date_str = tx.get("execution_date")
+        if date_str:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            if latest_date is None or dt > latest_date:
+                latest_date = dt
+
+    if latest_date is None:
+        return {
+            "rule": "inactivity_alert",
+            "passed": False,
+            "current_value": "unknown",
+            "threshold": f"{threshold_hours}h",
+            "severity": severity,
+            "detail": "Could not determine last transaction date",
+        }
+
+    now = datetime.now(timezone.utc)
+    hours_since = (now - latest_date).total_seconds() / 3600
+
+    return {
+        "rule": "inactivity_alert",
+        "passed": hours_since <= threshold_hours,
+        "current_value": f"{hours_since:.0f}h ago",
+        "threshold": f"{threshold_hours}h",
+        "severity": severity,
+        "detail": f"Last transaction: {latest_date.strftime('%Y-%m-%d %H:%M UTC')} ({hours_since:.0f}h ago)"
+        + ("" if hours_since <= threshold_hours else f" — exceeds {threshold_hours}h threshold"),
+    }
+
+
+def _estimate_tx_usd(tx: dict, balances: dict, prices: dict) -> float:
+    """Estimate USD value of a transaction using current token prices."""
+    # Native ETH transfer
+    if tx["value_wei"] > 0:
+        eth_price = prices.get(None, 0)
+        return tx["value_eth"] * eth_price
+
+    # ERC-20 transfer
+    if tx["token_address"] and tx["token_value_raw"]:
+        token_addr = tx["token_address"].lower()
+        decimals = 18
+        for t in balances["tokens"]:
+            if t["address"] and t["address"].lower() == token_addr:
+                decimals = t.get("decimals", 18)
+                break
+        human_amount = tx["token_value_raw"] / (10 ** decimals)
+        usd_per_unit = prices.get(token_addr, 0)
+        return human_amount * usd_per_unit
+
+    return 0.0

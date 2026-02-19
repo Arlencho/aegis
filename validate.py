@@ -3,8 +3,6 @@
 
 Usage:
     python validate.py --safe 0x... --policy policy.yaml
-
-This is the Day 1 deliverable: a working CLI that outputs a JSON compliance report.
 """
 
 import argparse
@@ -14,7 +12,7 @@ import sys
 
 import yaml
 
-from backend.app.safe_reader import fetch_safe_balances
+from backend.app.safe_reader import fetch_safe_balances, fetch_safe_transactions
 from backend.app.validator import validate_policy
 
 
@@ -43,8 +41,17 @@ async def main():
 
     print(f"Portfolio: ${balances['total_usd']:,.2f} across {len(balances['tokens'])} tokens", file=sys.stderr)
 
+    # Fetch transaction history
+    print(f"Fetching transaction history...", file=sys.stderr)
+    transactions = await fetch_safe_transactions(args.safe, limit=20)
+
+    if transactions is None:
+        print("Warning: Could not fetch transaction history. Some rules will be skipped.", file=sys.stderr)
+    else:
+        print(f"Transactions: {len(transactions)} recent executed transactions", file=sys.stderr)
+
     # Validate
-    report = validate_policy(balances, policy["rules"])
+    report = validate_policy(balances, policy["rules"], transactions=transactions)
 
     # Output
     indent = 2 if args.pretty else None
