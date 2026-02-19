@@ -1,0 +1,39 @@
+# AEGIS Example Policy File
+# Define governance rules for a Gnosis Safe treasury
+
+treasury:
+  name: "Example DAO Treasury"
+  safe_address: "0x0000000000000000000000000000000000000000"  # Replace with real Safe address
+  chain: "ethereum"
+
+rules:
+  # Rule 1: No single token should exceed this % of total portfolio value
+  - type: allocation_cap
+    params:
+      max_percent: 30
+    severity: breach
+
+  # Rule 2: Stablecoins must be at least this % of portfolio
+  - type: stablecoin_floor
+    params:
+      min_percent: 20
+      stablecoins: ["USDC", "USDT", "DAI"]
+    severity: breach
+
+  # Rule 3: Single asset concentration limit (absolute USD)
+  - type: single_asset_cap
+    params:
+      max_usd: 500000
+    severity: warning
+
+  # Rule 4: No single transaction should exceed this USD value
+  - type: max_tx_size
+    params:
+      max_usd: 100000
+    severity: breach
+
+  # Rule 5: Alert if no transaction activity for this many hours
+  - type: inactivity_alert
+    params:
+      threshold_hours: 168  # 7 days
+    severity: warning
