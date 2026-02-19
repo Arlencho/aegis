@@ -20,22 +20,26 @@ async def init_db():
     """Create connection pool and ensure waitlist table exists."""
     global _pool
     url = _get_database_url()
-    if not url:
-        logger.warning("DATABASE_URL not set — waitlist features disabled")
+    if not url or not url.startswith(("postgresql://", "postgres://")):
+        logger.warning("DATABASE_URL not set or invalid — waitlist features disabled")
         return
 
-    _pool = await asyncpg.create_pool(url, min_size=2, max_size=10)
-    async with _pool.acquire() as conn:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS waitlist (
-                id          SERIAL PRIMARY KEY,
-                email       TEXT NOT NULL UNIQUE,
-                name        TEXT,
-                source      TEXT DEFAULT 'website',
-                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        """)
-    logger.info("Database initialized, waitlist table ready")
+    try:
+        _pool = await asyncpg.create_pool(url, min_size=2, max_size=10)
+        async with _pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS waitlist (
+                    id          SERIAL PRIMARY KEY,
+                    email       TEXT NOT NULL UNIQUE,
+                    name        TEXT,
+                    source      TEXT DEFAULT 'website',
+                    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+        logger.info("Database initialized, waitlist table ready")
+    except Exception as e:
+        logger.error(f"Database connection failed: {e} — waitlist features disabled")
+        _pool = None
 
 
 async def close_db():
