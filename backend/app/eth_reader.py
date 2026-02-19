@@ -6,6 +6,7 @@ Returns the same dict shapes as safe_reader for validator compatibility.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -19,7 +20,18 @@ ETHERSCAN_API = "https://api.etherscan.io/v2/api"
 ETHERSCAN_KEY = os.getenv("ETHERSCAN_API_KEY", "")
 
 # Cap token discovery to prevent abuse on wallets with thousands of transfers
-MAX_TOKENS = 50
+MAX_TOKENS = 20
+
+# Etherscan free tier: 5 calls/sec. We add a small delay between calls.
+ETHERSCAN_DELAY = 0.25
+
+
+def _safe_int(value: str, default: int = 0) -> int:
+    """Parse an int from Etherscan, returning default if the result is an error string."""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
 
 
 async def fetch_eoa_balances(address: str) -> dict | None:
@@ -49,7 +61,6 @@ async def fetch_eoa_balances(address: str) -> dict | None:
             resp.raise_for_status()
             data = resp.json()
             if data.get("status") != "1" and data.get("message") != "OK":
-                # status "0" with result "0" is valid (zero balance)
                 if data.get("result") != "0":
                     logger.error(f"Etherscan balance error: {data.get('message')}")
                     return None
@@ -57,7 +68,7 @@ async def fetch_eoa_balances(address: str) -> dict | None:
             logger.error(f"Etherscan balance request failed: {e}")
             return None
 
-        eth_balance_wei = int(data.get("result", "0"))
+        eth_balance_wei = _safe_int(data.get("result", "0"))
         eth_balance = eth_balance_wei / 1e18
 
         # 2. Fetch ETH price
@@ -79,6 +90,7 @@ async def fetch_eoa_balances(address: str) -> dict | None:
             })
 
         # 3. Discover ERC-20 tokens via recent token transfers
+        await asyncio.sleep(ETHERSCAN_DELAY)
         try:
             resp = await client.get(
                 ETHERSCAN_API,
@@ -107,13 +119,14 @@ async def fetch_eoa_balances(address: str) -> dict | None:
                 if contract and contract not in seen_contracts:
                     seen_contracts[contract] = {
                         "symbol": tx.get("tokenSymbol", "???"),
-                        "decimals": int(tx.get("tokenDecimal", "18")),
+                        "decimals": _safe_int(tx.get("tokenDecimal", "18"), 18),
                     }
                 if len(seen_contracts) >= MAX_TOKENS:
                     break
 
-        # 4. Get balance for each discovered token
+        # 4. Get balance for each discovered token (with rate limit delays)
         for contract, info in seen_contracts.items():
+            await asyncio.sleep(ETHERSCAN_DELAY)
             try:
                 resp = await client.get(
                     ETHERSCAN_API,
@@ -132,7 +145,8 @@ async def fetch_eoa_balances(address: str) -> dict | None:
             except httpx.HTTPError:
                 continue
 
-            raw_balance = int(bal_data.get("result", "0"))
+            # Handle rate limit or error responses gracefully
+            raw_balance = _safe_int(bal_data.get("result", "0"))
             if raw_balance == 0:
                 continue
 
@@ -200,7 +214,7 @@ async def fetch_eoa_transactions(
 
     transactions = []
     for tx in data["result"]:
-        value_wei = int(tx.get("value", "0"))
+        value_wei = _safe_int(tx.get("value", "0"))
 
         # Map to safe_reader transaction shape
         transactions.append({
