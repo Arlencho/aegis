@@ -7,6 +7,61 @@ from datetime import datetime, timezone
 from .safe_reader import build_price_map
 
 
+RULE_METADATA = {
+    "allocation_cap": {
+        "name": "Single-Token Concentration Cap",
+        "description": "No single token should exceed a set percentage of total portfolio value.",
+        "rationale": "Most treasury frameworks cap single-token allocation at 25-35% to prevent catastrophic loss from a single asset crash.",
+    },
+    "stablecoin_floor": {
+        "name": "Stablecoin Minimum Floor",
+        "description": "Stablecoins must represent at least a minimum percentage of the portfolio.",
+        "rationale": "Maintaining 15-25% in stablecoins ensures 3-6 months of operating runway without forced liquidation during market downturns.",
+    },
+    "single_asset_cap": {
+        "name": "Absolute Asset Value Cap",
+        "description": "No single asset should exceed an absolute USD value threshold.",
+        "rationale": "Absolute caps prevent over-exposure even when percentage-based rules pass. Limits maximum loss from a single token collapse.",
+    },
+    "max_tx_size": {
+        "name": "Transaction Size Limit",
+        "description": "No single transaction should exceed a USD value threshold.",
+        "rationale": "Spending guardrails prevent unauthorized or accidental large transfers. Most treasuries set this at 5-15% of total holdings.",
+    },
+    "inactivity_alert": {
+        "name": "Activity Monitor",
+        "description": "The treasury must show transaction activity within a time window.",
+        "rationale": "Inactive treasuries may indicate lost keys, abandoned governance, or compromised signers. 7 days balances operational cadence with security.",
+    },
+}
+
+RULE_RECOMMENDATIONS = {
+    "allocation_cap": "Rebalance by swapping a portion of the over-concentrated token into stablecoins or diversified assets.",
+    "stablecoin_floor": "Increase stablecoin holdings by converting a portion of volatile assets. Target USDC or DAI for maximum liquidity.",
+    "single_asset_cap": "Reduce position size in the over-cap asset. Consider dollar-cost averaging out over multiple transactions.",
+    "max_tx_size": "Break large transfers into smaller batches. Consider implementing a multi-sig spending limit policy.",
+    "inactivity_alert": "Verify signer access and confirm the treasury is actively governed. Schedule regular rebalancing transactions.",
+}
+
+
+def _enrich_result(result: dict) -> dict:
+    """Add metadata (name, description, rationale) to a rule result."""
+    meta = RULE_METADATA.get(result["rule"], {})
+    result["name"] = meta.get("name", result["rule"])
+    result["description"] = meta.get("description", "")
+    result["rationale"] = meta.get("rationale", "")
+    return result
+
+
+def _generate_recommendation(result: dict) -> dict:
+    """Generate a deterministic recommendation for a failed rule."""
+    return {
+        "rule": result["rule"],
+        "action": RULE_RECOMMENDATIONS.get(result["rule"], "Review this rule's configuration and current portfolio state."),
+        "severity": result["severity"],
+    }
+
+
 def validate_policy(balances: dict, rules: list[dict], transactions: list[dict] | None = None) -> dict:
     """Compare live Safe state against policy rules.
 
@@ -30,6 +85,9 @@ def validate_policy(balances: dict, rules: list[dict], transactions: list[dict] 
         elif rule_type == "inactivity_alert":
             results.append(_check_inactivity_alert(transactions, params, severity))
 
+    results = [_enrich_result(r) for r in results]
+    recommendations = [_generate_recommendation(r) for r in results if not r["passed"]]
+
     passed_count = sum(1 for r in results if r["passed"])
     total_count = len(results)
 
@@ -41,6 +99,7 @@ def validate_policy(balances: dict, rules: list[dict], transactions: list[dict] 
         "failed": total_count - passed_count,
         "total_rules": total_count,
         "results": results,
+        "recommendations": recommendations,
     }
 
 

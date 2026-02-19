@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AEGIS - DAO Treasury Policy Enforcement",
-  description: "Deterministic compliance monitoring for Gnosis Safe treasuries",
+  title: "AEGIS - Treasury Risk Audit with AI Analysis",
+  description: "Instant compliance monitoring for Safe wallet treasuries. AI-powered risk analysis, deterministic policy enforcement, and actionable recommendations.",
 };
 
 export default function RootLayout({

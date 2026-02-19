@@ -1,4 +1,4 @@
-"""Gnosis Safe balance + transaction reader using Safe Transaction Service API."""
+"""Safe wallet balance + transaction reader using Safe Transaction Service API."""
 
 from __future__ import annotations
 
