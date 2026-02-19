@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://aegis.rios.xyz"),
+  metadataBase: new URL("https://aegistreasury.com"),
   title: "AEGIS — Treasury Risk Audit with AI Analysis",
   description:
     "Instant compliance monitoring for crypto treasuries. 10 regulatory-aligned risk rules, AI-powered analysis, and exportable PDF reports — in 30 seconds.",
@@ -34,13 +34,13 @@ export const metadata: Metadata = {
     title: "AEGIS — Treasury Risk Audit with AI",
     description:
       "10 compliance rules aligned with EU MiCA, SEC, FinCEN. AI analysis + PDF reports in 30 seconds.",
-    url: "https://aegis.rios.xyz",
+    url: "https://aegistreasury.com",
     siteName: "AEGIS",
     type: "website",
     locale: "en_US",
     images: [
       {
-        url: "https://aegis.rios.xyz/opengraph-image",
+        url: "https://aegistreasury.com/opengraph-image",
         width: 1200,
         height: 630,
         alt: "AEGIS — Treasury Risk Audit with AI Analysis",
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
     title: "AEGIS — Treasury Risk Audit with AI",
     description:
       "10 compliance rules. AI analysis. PDF reports. 30 seconds.",
-    images: ["https://aegis.rios.xyz/opengraph-image"],
+    images: ["https://aegistreasury.com/opengraph-image"],
   },
   robots: {
     index: true,

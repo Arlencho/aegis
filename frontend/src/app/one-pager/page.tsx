@@ -236,7 +236,7 @@ export default function OnePagerPage() {
             analysis in 30 seconds. No signup required.
           </p>
           <a
-            href="https://frontend-drab-three-76.vercel.app/#demo"
+            href="https://aegistreasury.com/#demo"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -291,7 +291,7 @@ export default function OnePagerPage() {
         <p className="sub">No contracts. No onboarding. Just your address.</p>
         <a
           className="btn"
-          href="https://frontend-drab-three-76.vercel.app/#demo"
+          href="https://aegistreasury.com/#demo"
           target="_blank"
           rel="noopener noreferrer"
         >

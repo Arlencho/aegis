@@ -135,7 +135,7 @@ export default async function Image() {
             fontWeight: 500,
           }}
         >
-          aegis.rios.xyz
+          aegistreasury.com
         </div>
       </div>
     ),
