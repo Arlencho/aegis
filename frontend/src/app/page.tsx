@@ -171,6 +171,76 @@ const RULE_CONFIGS: RuleConfig[] = [
     unit: "hours",
     severity: "warning",
   },
+  {
+    type: "min_diversification",
+    name: "Minimum Diversification",
+    description: "The portfolio must hold at least this many distinct tokens.",
+    rationale: "EU MiCA and MAS Singapore require diversified holdings to reduce systemic risk. Standard practice across all financial jurisdictions.",
+    paramKey: "min_tokens",
+    paramLabel: "Min token count",
+    defaultValue: 3,
+    min: 2,
+    max: 10,
+    step: 1,
+    unit: "tokens",
+    severity: "warning",
+  },
+  {
+    type: "volatile_exposure",
+    name: "Volatile Asset Exposure",
+    description: "Non-stablecoin (volatile) assets cannot exceed this percentage of the portfolio.",
+    rationale: "Limits exposure to market swings. Aligned with EU AIFMD reserve frameworks and prudential requirements from European and Asian regulators.",
+    paramKey: "max_percent",
+    paramLabel: "Max % volatile assets",
+    defaultValue: 80,
+    min: 30,
+    max: 95,
+    step: 5,
+    unit: "%",
+    severity: "warning",
+  },
+  {
+    type: "min_treasury_value",
+    name: "Minimum Treasury Value",
+    description: "Total portfolio value must remain above this USD floor.",
+    rationale: "Ensures operational solvency. Inspired by Basel III capital adequacy principles adopted by Japan FSA, Finansinspektionen (Sweden), and other regulators.",
+    paramKey: "min_usd",
+    paramLabel: "Min total USD value",
+    defaultValue: 100000,
+    min: 10000,
+    max: 5000000,
+    step: 10000,
+    unit: "$",
+    severity: "breach",
+  },
+  {
+    type: "large_tx_ratio",
+    name: "Relative Transaction Cap",
+    description: "No single transaction should exceed this percentage of total portfolio value.",
+    rationale: "AML/CFT compliance requires monitoring transactions relative to portfolio size. Required by FinCEN (US), FCA (UK), and FATF member regulators.",
+    paramKey: "max_percent",
+    paramLabel: "Max % of portfolio per tx",
+    defaultValue: 15,
+    min: 5,
+    max: 50,
+    step: 5,
+    unit: "%",
+    severity: "breach",
+  },
+  {
+    type: "concentration_hhi",
+    name: "Concentration Index (HHI)",
+    description: "The Herfindahl-Hirschman Index measures portfolio concentration (0 = diversified, 10000 = single asset).",
+    rationale: "HHI is the standard financial metric used by SEC, European Commission, and BaFin for measuring concentration risk in portfolios and markets.",
+    paramKey: "max_hhi",
+    paramLabel: "Max HHI score",
+    defaultValue: 3000,
+    min: 1500,
+    max: 6000,
+    step: 250,
+    unit: "HHI",
+    severity: "warning",
+  },
 ];
 
 // --- Scenario Gallery Data ---
@@ -196,15 +266,20 @@ const SCENARIOS: Scenario[] = [
       safe_address: "0x849D...7e41 (example)",
       total_usd: 2100000,
       overall_status: "COMPLIANT",
-      passed: 5,
+      passed: 10,
       failed: 0,
-      total_rules: 5,
+      total_rules: 10,
       results: [
         { rule: "allocation_cap", name: "Single-Token Concentration Cap", description: "", rationale: "", passed: true, current_value: "28.5%", threshold: "30%", severity: "breach", detail: "Largest position is ETH at 28.5% — within the 30% cap" },
         { rule: "stablecoin_floor", name: "Stablecoin Minimum Floor", description: "", rationale: "", passed: true, current_value: "25.2%", threshold: "20%", severity: "breach", detail: "Stablecoins: $529,200 (25.2% of portfolio)" },
         { rule: "single_asset_cap", name: "Absolute Asset Value Cap", description: "", rationale: "", passed: true, current_value: "all within cap", threshold: "$500,000", severity: "warning", detail: "No single asset exceeds the $500,000 absolute cap" },
         { rule: "max_tx_size", name: "Transaction Size Limit", description: "", rationale: "", passed: true, current_value: "12 txs checked", threshold: "$100,000", severity: "breach", detail: "All 12 recent transactions within $100,000 cap" },
         { rule: "inactivity_alert", name: "Activity Monitor", description: "", rationale: "", passed: true, current_value: "36h ago", threshold: "168h", severity: "warning", detail: "Last transaction: 36 hours ago — well within 7-day window" },
+        { rule: "min_diversification", name: "Minimum Diversification", description: "", rationale: "", passed: true, current_value: "5 tokens", threshold: "3 min", severity: "warning", detail: "Portfolio holds 5 distinct tokens" },
+        { rule: "volatile_exposure", name: "Volatile Asset Exposure Cap", description: "", rationale: "", passed: true, current_value: "74.8%", threshold: "80%", severity: "warning", detail: "Volatile assets: $1,570,800 (74.8% of portfolio)" },
+        { rule: "min_treasury_value", name: "Minimum Treasury Threshold", description: "", rationale: "", passed: true, current_value: "$2,100,000", threshold: "$100,000", severity: "breach", detail: "Total portfolio value: $2,100,000" },
+        { rule: "large_tx_ratio", name: "Relative Transaction Cap", description: "", rationale: "", passed: true, current_value: "12 txs checked", threshold: "15%", severity: "breach", detail: "All 12 recent transactions within 15% of portfolio" },
+        { rule: "concentration_hhi", name: "Portfolio Concentration Index", description: "", rationale: "", passed: true, current_value: "2180 (moderate)", threshold: "3000", severity: "warning", detail: "HHI score: 2180 (moderate)" },
       ],
       recommendations: [],
       ai_analysis: null,
@@ -220,20 +295,27 @@ const SCENARIOS: Scenario[] = [
       safe_address: "0xA3f1...9c02 (example)",
       total_usd: 1800000,
       overall_status: "NON-COMPLIANT",
-      passed: 3,
-      failed: 2,
-      total_rules: 5,
+      passed: 5,
+      failed: 5,
+      total_rules: 10,
       results: [
         { rule: "allocation_cap", name: "Single-Token Concentration Cap", description: "", rationale: "", passed: false, current_value: "72.1%", threshold: "30%", severity: "breach", detail: "ETH is 72.1% of portfolio ($1,297,800) — exceeds 30% cap" },
         { rule: "stablecoin_floor", name: "Stablecoin Minimum Floor", description: "", rationale: "", passed: false, current_value: "8.3%", threshold: "20%", severity: "breach", detail: "Stablecoins: $149,400 (8.3% of portfolio) — below 20% floor" },
         { rule: "single_asset_cap", name: "Absolute Asset Value Cap", description: "", rationale: "", passed: false, current_value: "1 asset over cap", threshold: "$500,000", severity: "warning", detail: "Over cap: ETH: $1,297,800" },
         { rule: "max_tx_size", name: "Transaction Size Limit", description: "", rationale: "", passed: true, current_value: "8 txs checked", threshold: "$100,000", severity: "breach", detail: "All 8 recent transactions within $100,000 cap" },
         { rule: "inactivity_alert", name: "Activity Monitor", description: "", rationale: "", passed: true, current_value: "12h ago", threshold: "168h", severity: "warning", detail: "Last transaction: 12 hours ago" },
+        { rule: "min_diversification", name: "Minimum Diversification", description: "", rationale: "", passed: false, current_value: "2 tokens", threshold: "3 min", severity: "warning", detail: "Portfolio holds 2 distinct tokens — below 3 minimum" },
+        { rule: "volatile_exposure", name: "Volatile Asset Exposure Cap", description: "", rationale: "", passed: false, current_value: "91.7%", threshold: "80%", severity: "warning", detail: "Volatile assets: $1,650,600 (91.7% of portfolio) — exceeds 80% cap" },
+        { rule: "min_treasury_value", name: "Minimum Treasury Threshold", description: "", rationale: "", passed: true, current_value: "$1,800,000", threshold: "$100,000", severity: "breach", detail: "Total portfolio value: $1,800,000" },
+        { rule: "large_tx_ratio", name: "Relative Transaction Cap", description: "", rationale: "", passed: true, current_value: "8 txs checked", threshold: "15%", severity: "breach", detail: "All 8 recent transactions within 15% of portfolio" },
+        { rule: "concentration_hhi", name: "Portfolio Concentration Index", description: "", rationale: "", passed: true, current_value: "5270 (concentrated)", threshold: "3000", severity: "warning", detail: "HHI score: 5270 (concentrated) — exceeds 3000 threshold" },
       ],
       recommendations: [
         { rule: "allocation_cap", action: "Rebalance by swapping a portion of ETH into stablecoins or diversified assets.", severity: "breach" },
         { rule: "stablecoin_floor", action: "Increase stablecoin holdings by converting volatile assets. Target USDC or DAI for maximum liquidity.", severity: "breach" },
         { rule: "single_asset_cap", action: "Reduce ETH position size. Consider dollar-cost averaging out over multiple transactions.", severity: "warning" },
+        { rule: "min_diversification", action: "Add new token positions to diversify the portfolio.", severity: "warning" },
+        { rule: "volatile_exposure", action: "Reduce volatile asset exposure by converting a portion into stablecoins.", severity: "warning" },
       ],
       ai_analysis: null,
     },
@@ -248,18 +330,24 @@ const SCENARIOS: Scenario[] = [
       safe_address: "0xD4e2...1b38 (example)",
       total_usd: 900000,
       overall_status: "NON-COMPLIANT",
-      passed: 4,
-      failed: 1,
-      total_rules: 5,
+      passed: 7,
+      failed: 3,
+      total_rules: 10,
       results: [
         { rule: "allocation_cap", name: "Single-Token Concentration Cap", description: "", rationale: "", passed: true, current_value: "29.8%", threshold: "30%", severity: "breach", detail: "Largest position is WBTC at 29.8% — just within the 30% cap" },
         { rule: "stablecoin_floor", name: "Stablecoin Minimum Floor", description: "", rationale: "", passed: false, current_value: "5.1%", threshold: "20%", severity: "breach", detail: "Stablecoins: $45,900 (5.1% of portfolio) — below 20% floor" },
         { rule: "single_asset_cap", name: "Absolute Asset Value Cap", description: "", rationale: "", passed: true, current_value: "all within cap", threshold: "$500,000", severity: "warning", detail: "No single asset exceeds the $500,000 absolute cap" },
         { rule: "max_tx_size", name: "Transaction Size Limit", description: "", rationale: "", passed: true, current_value: "5 txs checked", threshold: "$100,000", severity: "breach", detail: "All 5 recent transactions within $100,000 cap" },
         { rule: "inactivity_alert", name: "Activity Monitor", description: "", rationale: "", passed: true, current_value: "72h ago", threshold: "168h", severity: "warning", detail: "Last transaction: 72 hours ago" },
+        { rule: "min_diversification", name: "Minimum Diversification", description: "", rationale: "", passed: true, current_value: "4 tokens", threshold: "3 min", severity: "warning", detail: "Portfolio holds 4 distinct tokens" },
+        { rule: "volatile_exposure", name: "Volatile Asset Exposure Cap", description: "", rationale: "", passed: false, current_value: "94.9%", threshold: "80%", severity: "warning", detail: "Volatile assets: $854,100 (94.9% of portfolio) — exceeds 80% cap" },
+        { rule: "min_treasury_value", name: "Minimum Treasury Threshold", description: "", rationale: "", passed: true, current_value: "$900,000", threshold: "$100,000", severity: "breach", detail: "Total portfolio value: $900,000" },
+        { rule: "large_tx_ratio", name: "Relative Transaction Cap", description: "", rationale: "", passed: true, current_value: "5 txs checked", threshold: "15%", severity: "breach", detail: "All 5 recent transactions within 15% of portfolio" },
+        { rule: "concentration_hhi", name: "Portfolio Concentration Index", description: "", rationale: "", passed: false, current_value: "2650 (concentrated)", threshold: "3000", severity: "warning", detail: "HHI score: 2650 (concentrated)" },
       ],
       recommendations: [
         { rule: "stablecoin_floor", action: "Increase stablecoin holdings by converting volatile assets. Target USDC or DAI for maximum liquidity.", severity: "breach" },
+        { rule: "volatile_exposure", action: "Reduce volatile asset exposure by converting a portion into stablecoins.", severity: "warning" },
       ],
       ai_analysis: null,
     },
@@ -274,15 +362,20 @@ const SCENARIOS: Scenario[] = [
       safe_address: "0x71B8...4e59 (example)",
       total_usd: 450000,
       overall_status: "NON-COMPLIANT",
-      passed: 4,
+      passed: 9,
       failed: 1,
-      total_rules: 5,
+      total_rules: 10,
       results: [
         { rule: "allocation_cap", name: "Single-Token Concentration Cap", description: "", rationale: "", passed: true, current_value: "24.2%", threshold: "30%", severity: "breach", detail: "No single token exceeds allocation cap" },
         { rule: "stablecoin_floor", name: "Stablecoin Minimum Floor", description: "", rationale: "", passed: true, current_value: "31.5%", threshold: "20%", severity: "breach", detail: "Stablecoins: $141,750 (31.5% of portfolio)" },
         { rule: "single_asset_cap", name: "Absolute Asset Value Cap", description: "", rationale: "", passed: true, current_value: "all within cap", threshold: "$500,000", severity: "warning", detail: "No single asset exceeds the $500,000 absolute cap" },
         { rule: "max_tx_size", name: "Transaction Size Limit", description: "", rationale: "", passed: true, current_value: "3 txs checked", threshold: "$100,000", severity: "breach", detail: "All 3 recent transactions within $100,000 cap" },
         { rule: "inactivity_alert", name: "Activity Monitor", description: "", rationale: "", passed: false, current_value: "720h ago", threshold: "168h", severity: "warning", detail: "Last transaction: 30 days ago — exceeds 168h threshold" },
+        { rule: "min_diversification", name: "Minimum Diversification", description: "", rationale: "", passed: true, current_value: "4 tokens", threshold: "3 min", severity: "warning", detail: "Portfolio holds 4 distinct tokens" },
+        { rule: "volatile_exposure", name: "Volatile Asset Exposure Cap", description: "", rationale: "", passed: true, current_value: "68.5%", threshold: "80%", severity: "warning", detail: "Volatile assets: $308,250 (68.5% of portfolio)" },
+        { rule: "min_treasury_value", name: "Minimum Treasury Threshold", description: "", rationale: "", passed: true, current_value: "$450,000", threshold: "$100,000", severity: "breach", detail: "Total portfolio value: $450,000" },
+        { rule: "large_tx_ratio", name: "Relative Transaction Cap", description: "", rationale: "", passed: true, current_value: "3 txs checked", threshold: "15%", severity: "breach", detail: "All 3 recent transactions within 15% of portfolio" },
+        { rule: "concentration_hhi", name: "Portfolio Concentration Index", description: "", rationale: "", passed: true, current_value: "1920 (moderate)", threshold: "3000", severity: "warning", detail: "HHI score: 1920 (moderate)" },
       ],
       recommendations: [
         { rule: "inactivity_alert", action: "Verify signer access and confirm the treasury is actively governed. Schedule regular rebalancing transactions.", severity: "warning" },
@@ -301,15 +394,20 @@ const SCENARIOS: Scenario[] = [
       safe_address: "9WzD...AWWM (Solana)",
       total_usd: 1500000,
       overall_status: "COMPLIANT",
-      passed: 5,
+      passed: 10,
       failed: 0,
-      total_rules: 5,
+      total_rules: 10,
       results: [
         { rule: "allocation_cap", name: "Single-Token Concentration Cap", description: "", rationale: "", passed: true, current_value: "26.7%", threshold: "30%", severity: "breach", detail: "Largest position is SOL at 26.7% — within the 30% cap" },
         { rule: "stablecoin_floor", name: "Stablecoin Minimum Floor", description: "", rationale: "", passed: true, current_value: "35.0%", threshold: "20%", severity: "breach", detail: "Stablecoins: $525,000 (35.0% of portfolio) — USDC + USDT" },
         { rule: "single_asset_cap", name: "Absolute Asset Value Cap", description: "", rationale: "", passed: true, current_value: "all within cap", threshold: "$500,000", severity: "warning", detail: "No single asset exceeds the $500,000 absolute cap" },
         { rule: "max_tx_size", name: "Transaction Size Limit", description: "", rationale: "", passed: true, current_value: "8 txs checked", threshold: "$100,000", severity: "breach", detail: "All 8 recent transactions within $100,000 cap" },
         { rule: "inactivity_alert", name: "Activity Monitor", description: "", rationale: "", passed: true, current_value: "4h ago", threshold: "168h", severity: "warning", detail: "Last transaction: 4 hours ago — very active" },
+        { rule: "min_diversification", name: "Minimum Diversification", description: "", rationale: "", passed: true, current_value: "4 tokens", threshold: "3 min", severity: "warning", detail: "Portfolio holds 4 distinct tokens" },
+        { rule: "volatile_exposure", name: "Volatile Asset Exposure Cap", description: "", rationale: "", passed: true, current_value: "65.0%", threshold: "80%", severity: "warning", detail: "Volatile assets: $975,000 (65.0% of portfolio)" },
+        { rule: "min_treasury_value", name: "Minimum Treasury Threshold", description: "", rationale: "", passed: true, current_value: "$1,500,000", threshold: "$100,000", severity: "breach", detail: "Total portfolio value: $1,500,000" },
+        { rule: "large_tx_ratio", name: "Relative Transaction Cap", description: "", rationale: "", passed: true, current_value: "8 txs checked", threshold: "15%", severity: "breach", detail: "All 8 recent transactions within 15% of portfolio" },
+        { rule: "concentration_hhi", name: "Portfolio Concentration Index", description: "", rationale: "", passed: true, current_value: "2010 (moderate)", threshold: "3000", severity: "warning", detail: "HHI score: 2010 (moderate)" },
       ],
       recommendations: [],
       ai_analysis: null,
@@ -326,20 +424,27 @@ const SCENARIOS: Scenario[] = [
       safe_address: "DYw8...3kNz (Solana)",
       total_usd: 800000,
       overall_status: "NON-COMPLIANT",
-      passed: 3,
-      failed: 2,
-      total_rules: 5,
+      passed: 4,
+      failed: 6,
+      total_rules: 10,
       results: [
         { rule: "allocation_cap", name: "Single-Token Concentration Cap", description: "", rationale: "", passed: false, current_value: "85.0%", threshold: "30%", severity: "breach", detail: "SOL is 85.0% of portfolio ($680,000) — exceeds 30% cap" },
         { rule: "stablecoin_floor", name: "Stablecoin Minimum Floor", description: "", rationale: "", passed: false, current_value: "6.3%", threshold: "20%", severity: "breach", detail: "Stablecoins: $50,400 (6.3% of portfolio) — below 20% floor" },
         { rule: "single_asset_cap", name: "Absolute Asset Value Cap", description: "", rationale: "", passed: false, current_value: "1 asset over cap", threshold: "$500,000", severity: "warning", detail: "Over cap: SOL: $680,000" },
         { rule: "max_tx_size", name: "Transaction Size Limit", description: "", rationale: "", passed: true, current_value: "6 txs checked", threshold: "$100,000", severity: "breach", detail: "All 6 recent transactions within $100,000 cap" },
         { rule: "inactivity_alert", name: "Activity Monitor", description: "", rationale: "", passed: true, current_value: "18h ago", threshold: "168h", severity: "warning", detail: "Last transaction: 18 hours ago" },
+        { rule: "min_diversification", name: "Minimum Diversification", description: "", rationale: "", passed: false, current_value: "2 tokens", threshold: "3 min", severity: "warning", detail: "Portfolio holds 2 distinct tokens — below 3 minimum" },
+        { rule: "volatile_exposure", name: "Volatile Asset Exposure Cap", description: "", rationale: "", passed: false, current_value: "93.7%", threshold: "80%", severity: "warning", detail: "Volatile assets: $749,600 (93.7% of portfolio) — exceeds 80% cap" },
+        { rule: "min_treasury_value", name: "Minimum Treasury Threshold", description: "", rationale: "", passed: true, current_value: "$800,000", threshold: "$100,000", severity: "breach", detail: "Total portfolio value: $800,000" },
+        { rule: "large_tx_ratio", name: "Relative Transaction Cap", description: "", rationale: "", passed: true, current_value: "6 txs checked", threshold: "15%", severity: "breach", detail: "All 6 recent transactions within 15% of portfolio" },
+        { rule: "concentration_hhi", name: "Portfolio Concentration Index", description: "", rationale: "", passed: false, current_value: "7260 (concentrated)", threshold: "3000", severity: "warning", detail: "HHI score: 7260 (concentrated) — exceeds 3000 threshold" },
       ],
       recommendations: [
         { rule: "allocation_cap", action: "Diversify by converting a portion of SOL into stablecoins or other assets.", severity: "breach" },
         { rule: "stablecoin_floor", action: "Increase stablecoin holdings. Target USDC on Solana for maximum liquidity.", severity: "breach" },
         { rule: "single_asset_cap", action: "Reduce SOL position size to stay within the $500,000 absolute cap.", severity: "warning" },
+        { rule: "min_diversification", action: "Add new token positions to diversify the portfolio.", severity: "warning" },
+        { rule: "volatile_exposure", action: "Reduce volatile asset exposure by converting a portion into stablecoins.", severity: "warning" },
       ],
       ai_analysis: null,
     },
@@ -782,7 +887,7 @@ function HeroSection() {
             {/* Stats bar */}
             <div className="animate-fade-in-up-delay-3 flex items-center justify-center lg:justify-start gap-6 md:gap-8">
               <div>
-                <p className="text-2xl font-bold text-white">5</p>
+                <p className="text-2xl font-bold text-white">10</p>
                 <p className="text-[11px] text-gray-500 uppercase tracking-wider">Risk Rules</p>
               </div>
               <div className="w-px h-8 bg-gray-800" />
@@ -950,7 +1055,7 @@ function HowItWorksSection() {
       number: "2",
       title: "Set your risk rules",
       detail:
-        "5 built-in rules with sensible defaults. Adjust thresholds with sliders or use ours.",
+        "10 built-in compliance rules aligned with EU, US, and Asian regulatory frameworks. Adjust thresholds or use our defaults.",
     },
     {
       number: "3",
@@ -996,6 +1101,11 @@ function FeaturesSection() {
     { name: "Absolute asset value cap", desc: "Hard USD ceiling on any single token position" },
     { name: "Transaction size limit", desc: "Spending guardrails on individual transfers" },
     { name: "Activity monitoring", desc: "Detect dormant wallets with configurable inactivity alerts" },
+    { name: "Minimum diversification", desc: "Require a minimum number of distinct tokens in the portfolio" },
+    { name: "Volatile asset exposure cap", desc: "Limit non-stablecoin exposure to reduce market risk" },
+    { name: "Minimum treasury value", desc: "Ensure portfolio stays above a solvency floor" },
+    { name: "Relative transaction cap", desc: "Flag transactions disproportionate to portfolio size" },
+    { name: "Concentration index (HHI)", desc: "Industry-standard metric for portfolio concentration risk" },
   ];
 
   const aiFeatures = [
@@ -1062,18 +1172,35 @@ function FeaturesSection() {
 function CredibilityStrip() {
   return (
     <section className="py-8 px-6 md:px-12 border-y border-gray-800/50">
-      <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 text-center">
-        <span className="text-xs text-gray-500">
-          Built for treasuries in the <span className="text-gray-300 font-medium">$250K&ndash;$10M</span> range
-        </span>
-        <span className="hidden md:block text-gray-800">|</span>
-        <span className="text-xs text-gray-500">
-          Testing with <span className="text-gray-300 font-medium">live stablecoin portfolios</span>
-        </span>
-        <span className="hidden md:block text-gray-800">|</span>
-        <span className="text-xs text-gray-500">
-          <span className="text-gray-300 font-medium">Advisory mode</span> — zero autonomous execution
-        </span>
+      <div className="max-w-5xl mx-auto">
+        <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 text-center mb-4">
+          <span className="text-xs text-gray-500">
+            Built for treasuries in the <span className="text-gray-300 font-medium">$250K&ndash;$10M</span> range
+          </span>
+          <span className="hidden md:block text-gray-800">|</span>
+          <span className="text-xs text-gray-500">
+            <span className="text-gray-300 font-medium">10 compliance rules</span> aligned with global standards
+          </span>
+          <span className="hidden md:block text-gray-800">|</span>
+          <span className="text-xs text-gray-500">
+            <span className="text-gray-300 font-medium">Advisory mode</span> — zero autonomous execution
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-3 md:gap-6">
+          {[
+            { region: "EU", frameworks: "MiCA, AIFMD" },
+            { region: "Americas", frameworks: "SEC, FinCEN, FATF" },
+            { region: "Asia", frameworks: "MAS, Japan FSA" },
+            { region: "Nordics", frameworks: "Finansinspektionen" },
+            { region: "UK", frameworks: "FCA" },
+          ].map((item) => (
+            <span key={item.region} className="text-[10px] text-gray-500 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500/40" />
+              <span className="text-gray-400 font-medium">{item.region}</span>
+              <span className="text-gray-600">{item.frameworks}</span>
+            </span>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -1151,7 +1278,7 @@ function ComparisonSection() {
             <div className="space-y-3 mb-6">
               {[
                 "Takes 30 seconds, end to end",
-                "5 deterministic rules + AI analysis",
+                "10 compliance rules + AI analysis",
                 "Stress tests included (\"what if ETH drops 30%?\")",
                 "Professional PDF report for stakeholders",
                 "On-demand — run anytime, any wallet",

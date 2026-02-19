@@ -33,6 +33,31 @@ RULE_METADATA = {
         "description": "The treasury must show transaction activity within a time window.",
         "rationale": "Inactive treasuries may indicate lost keys, abandoned governance, or compromised signers. 7 days balances operational cadence with security.",
     },
+    "min_diversification": {
+        "name": "Minimum Diversification",
+        "description": "The portfolio must hold at least a minimum number of distinct tokens.",
+        "rationale": "EU MiCA and MAS Singapore guidelines require diversified holdings to reduce systemic risk. Standard financial practice across all jurisdictions.",
+    },
+    "volatile_exposure": {
+        "name": "Volatile Asset Exposure Cap",
+        "description": "Non-stablecoin (volatile) assets cannot exceed a maximum percentage of the portfolio.",
+        "rationale": "Limits exposure to market volatility. Aligned with EU AIFMD reserve frameworks and prudential requirements across European and Asian regulators.",
+    },
+    "min_treasury_value": {
+        "name": "Minimum Treasury Threshold",
+        "description": "Total portfolio value must remain above a minimum USD floor.",
+        "rationale": "Ensures operational solvency. Basel III-inspired capital adequacy principles adopted by regulators including Japan FSA and Finansinspektionen (Sweden).",
+    },
+    "large_tx_ratio": {
+        "name": "Relative Transaction Cap",
+        "description": "No single transaction should exceed a percentage of total portfolio value.",
+        "rationale": "AML/CFT compliance requires monitoring transactions relative to portfolio size. Required by FinCEN (US), FCA (UK), and FATF member regulators globally.",
+    },
+    "concentration_hhi": {
+        "name": "Portfolio Concentration Index",
+        "description": "The Herfindahl-Hirschman Index (HHI) of portfolio allocation must stay below a threshold.",
+        "rationale": "HHI is the standard financial metric for measuring market/portfolio concentration. Used by SEC, European Commission, and BaFin for competitive and risk analysis.",
+    },
 }
 
 RULE_RECOMMENDATIONS = {
@@ -41,6 +66,11 @@ RULE_RECOMMENDATIONS = {
     "single_asset_cap": "Reduce position size in the over-cap asset. Consider dollar-cost averaging out over multiple transactions.",
     "max_tx_size": "Break large transfers into smaller batches. Consider implementing a multi-sig spending limit policy.",
     "inactivity_alert": "Verify signer access and confirm the treasury is actively governed. Schedule regular rebalancing transactions.",
+    "min_diversification": "Add new token positions to diversify the portfolio. Consider allocating to uncorrelated assets across DeFi, stablecoins, and L1 tokens.",
+    "volatile_exposure": "Reduce volatile asset exposure by converting a portion into stablecoins. This improves resilience during market downturns.",
+    "min_treasury_value": "Treasury value has fallen below the minimum threshold. Consider fundraising, reducing burn rate, or reallocating to higher-yield stablecoins.",
+    "large_tx_ratio": "Recent transactions are disproportionately large relative to total holdings. Consider imposing tighter per-transaction limits or requiring multi-sig for large transfers.",
+    "concentration_hhi": "Portfolio concentration is too high. Distribute holdings more evenly across multiple tokens to reduce the HHI score below the threshold.",
 }
 
 
@@ -84,6 +114,16 @@ def validate_policy(balances: dict, rules: list[dict], transactions: list[dict] 
             results.append(_check_max_tx_size(transactions, balances, params, severity))
         elif rule_type == "inactivity_alert":
             results.append(_check_inactivity_alert(transactions, params, severity))
+        elif rule_type == "min_diversification":
+            results.append(_check_min_diversification(balances, params, severity))
+        elif rule_type == "volatile_exposure":
+            results.append(_check_volatile_exposure(balances, params, severity))
+        elif rule_type == "min_treasury_value":
+            results.append(_check_min_treasury_value(balances, params, severity))
+        elif rule_type == "large_tx_ratio":
+            results.append(_check_large_tx_ratio(transactions, balances, params, severity))
+        elif rule_type == "concentration_hhi":
+            results.append(_check_concentration_hhi(balances, params, severity))
 
     results = [_enrich_result(r) for r in results]
     recommendations = [_generate_recommendation(r) for r in results if not r["passed"]]
@@ -312,6 +352,173 @@ def _check_inactivity_alert(transactions: list[dict] | None, params: dict, sever
         "severity": severity,
         "detail": f"Last transaction: {latest_date.strftime('%Y-%m-%d %H:%M UTC')} ({hours_since:.0f}h ago)"
         + ("" if hours_since <= threshold_hours else f" — exceeds {threshold_hours}h threshold"),
+    }
+
+
+def _check_min_diversification(balances: dict, params: dict, severity: str) -> dict:
+    """Check that the portfolio holds at least min_tokens distinct tokens."""
+    min_tokens = params.get("min_tokens", 3)
+    # Count tokens with meaningful balance (> $100 to filter dust)
+    meaningful = [t for t in balances["tokens"] if t["usd_value"] > 100 or t["balance"] > 0.01]
+    count = len(meaningful)
+
+    return {
+        "rule": "min_diversification",
+        "passed": count >= min_tokens,
+        "current_value": f"{count} tokens",
+        "threshold": f"{min_tokens} min",
+        "severity": severity,
+        "detail": f"Portfolio holds {count} distinct token(s)"
+        + ("" if count >= min_tokens else f" — below {min_tokens} minimum for diversification"),
+    }
+
+
+def _check_volatile_exposure(balances: dict, params: dict, severity: str) -> dict:
+    """Check that non-stablecoin assets don't exceed max_percent of portfolio."""
+    max_pct = params.get("max_percent", 80)
+    total = balances["total_usd"]
+
+    if total == 0:
+        return {
+            "rule": "volatile_exposure",
+            "passed": True,
+            "current_value": "0%",
+            "threshold": f"{max_pct}%",
+            "severity": severity,
+            "detail": "Portfolio is empty",
+        }
+
+    stable_usd = sum(t["usd_value"] for t in balances["tokens"] if t["is_stablecoin"])
+    volatile_usd = total - stable_usd
+    volatile_pct = (volatile_usd / total) * 100
+
+    return {
+        "rule": "volatile_exposure",
+        "passed": volatile_pct <= max_pct,
+        "current_value": f"{volatile_pct:.1f}%",
+        "threshold": f"{max_pct}%",
+        "severity": severity,
+        "detail": f"Volatile assets: ${volatile_usd:,.0f} ({volatile_pct:.1f}% of portfolio)"
+        + ("" if volatile_pct <= max_pct else f" — exceeds {max_pct}% cap"),
+    }
+
+
+def _check_min_treasury_value(balances: dict, params: dict, severity: str) -> dict:
+    """Check that total portfolio value meets a minimum USD threshold."""
+    min_usd = params.get("min_usd", 100000)
+    total = balances["total_usd"]
+
+    return {
+        "rule": "min_treasury_value",
+        "passed": total >= min_usd,
+        "current_value": f"${total:,.0f}",
+        "threshold": f"${min_usd:,.0f}",
+        "severity": severity,
+        "detail": f"Total portfolio value: ${total:,.0f}"
+        + ("" if total >= min_usd else f" — below ${min_usd:,.0f} minimum threshold"),
+    }
+
+
+def _check_large_tx_ratio(
+    transactions: list[dict] | None, balances: dict, params: dict, severity: str
+) -> dict:
+    """Check that no transaction exceeds max_percent of total portfolio value."""
+    max_pct = params.get("max_percent", 15)
+    total = balances["total_usd"]
+
+    if transactions is None or total == 0:
+        return {
+            "rule": "large_tx_ratio",
+            "passed": True,
+            "current_value": "N/A",
+            "threshold": f"{max_pct}%",
+            "severity": severity,
+            "detail": "No transaction data available — skipped",
+        }
+
+    if not transactions:
+        return {
+            "rule": "large_tx_ratio",
+            "passed": True,
+            "current_value": "no recent txs",
+            "threshold": f"{max_pct}%",
+            "severity": severity,
+            "detail": "No executed transactions found",
+        }
+
+    prices = build_price_map(balances)
+    max_usd = total * (max_pct / 100)
+
+    breaches = []
+    for tx in transactions:
+        estimated = _estimate_tx_usd(tx, balances, prices)
+        pct = (estimated / total) * 100 if total > 0 else 0
+        if pct > max_pct:
+            breaches.append({"pct": pct, "usd": estimated})
+
+    if breaches:
+        worst = max(breaches, key=lambda b: b["pct"])
+        return {
+            "rule": "large_tx_ratio",
+            "passed": False,
+            "current_value": f"{worst['pct']:.1f}%",
+            "threshold": f"{max_pct}%",
+            "severity": severity,
+            "detail": f"{len(breaches)} transaction(s) exceed {max_pct}% of portfolio. "
+                      f"Largest: {worst['pct']:.1f}% (${worst['usd']:,.0f})",
+        }
+
+    return {
+        "rule": "large_tx_ratio",
+        "passed": True,
+        "current_value": f"{len(transactions)} txs checked",
+        "threshold": f"{max_pct}%",
+        "severity": severity,
+        "detail": f"All {len(transactions)} recent transactions within {max_pct}% of portfolio",
+    }
+
+
+def _check_concentration_hhi(balances: dict, params: dict, severity: str) -> dict:
+    """Check portfolio concentration using the Herfindahl-Hirschman Index.
+
+    HHI = sum of (market_share_i)^2 for each token, scaled 0-10000.
+    <1500 = diversified, 1500-2500 = moderate, >2500 = concentrated.
+    """
+    max_hhi = params.get("max_hhi", 3000)
+    total = balances["total_usd"]
+
+    if total == 0:
+        return {
+            "rule": "concentration_hhi",
+            "passed": True,
+            "current_value": "0",
+            "threshold": f"{max_hhi}",
+            "severity": severity,
+            "detail": "Portfolio is empty",
+        }
+
+    hhi = 0.0
+    for token in balances["tokens"]:
+        share = (token["usd_value"] / total) * 100  # percentage
+        hhi += share ** 2
+
+    hhi = round(hhi)
+
+    if hhi < 1500:
+        label = "diversified"
+    elif hhi < 2500:
+        label = "moderate"
+    else:
+        label = "concentrated"
+
+    return {
+        "rule": "concentration_hhi",
+        "passed": hhi <= max_hhi,
+        "current_value": f"{hhi} ({label})",
+        "threshold": f"{max_hhi}",
+        "severity": severity,
+        "detail": f"HHI score: {hhi} ({label})"
+        + ("" if hhi <= max_hhi else f" — exceeds {max_hhi} threshold"),
     }
 
 
