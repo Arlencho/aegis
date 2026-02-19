@@ -45,6 +45,47 @@ One prospect responded to our Day 3 outreach with detailed, actionable feedback 
 
 ---
 
+## Round 2 Feedback (Post-Iteration)
+
+After shipping the frictionless demo, we received 5 additional pieces of feedback that exposed deeper product gaps:
+
+### Theme 6: Terminology Confusion
+
+> "What is Gnosis Safe address?" — A solo crypto holder didn't understand the term. Not our ICP, but "Gnosis" is deprecated branding.
+
+### Theme 7: Policy Rationale Missing
+
+> "Why these rules? Why these numbers?" — The 5 default rules had no explanation of why those thresholds were chosen or why those specific rules matter.
+
+### Theme 8: Single Scenario Not Enough
+
+> "Show me different cases" — One sample address only proves the API works. Multiple scenarios prove we understand the problem space.
+
+### Theme 9: No Actionable Next Steps
+
+> "Compliant/Non-compliant — then what?" — The report gives a verdict with no guidance on what to change.
+
+### Theme 10: No AI Differentiation
+
+> "Where is the AI behind this? ALL I see is static rules and parameters.. we are in 2026.. this tool can anyone build! GIVE ME AI POWER!"
+
+## Updated Signal Classification
+
+| # | Theme | Type | Classification | Action Required |
+|---|-------|------|----------------|-----------------|
+| 1 | Pain Specificity | Messaging | Actionable — rewrite DM openers | Manual (rewrite DMs) |
+| 2 | Credibility Anchoring | Messaging | Actionable — add social proof line | Manual (rewrite DMs) |
+| 3 | Ask Framing | Messaging | Actionable — lower the ask | Manual (rewrite DMs) |
+| 4 | Positioning Shift | Messaging | Actionable — reframe angle | Manual (rewrite DMs) |
+| 5 | Demo Friction | Product | Actionable — remove YAML requirement | Code change (frontend) — DONE |
+| 6 | Terminology | Product | Actionable — "Gnosis Safe" → "Safe wallet" | Code change (frontend + backend) — DONE |
+| 7 | Policy Rationale | Product | Actionable — add "why" for each rule | Code change (backend + frontend) — DONE |
+| 8 | Multiple Scenarios | Product | Actionable — scenario gallery | Code change (frontend) — DONE |
+| 9 | Actionable Next Steps | Product | Actionable — recommendation panel | Code change (backend + frontend) — DONE |
+| 10 | AI Differentiation | Product | Actionable — Claude-powered analysis | Code change (new backend module + frontend) — DONE |
+
+---
+
 ## GO Decision
 
 ### Decision: GO — with iteration required before next batch
@@ -53,9 +94,14 @@ One prospect responded to our Day 3 outreach with detailed, actionable feedback 
 
 1. **Engagement is real.** A cold prospect gave 5 themes of specific, actionable product feedback. This is not "cool, I'll check it out." This is someone who evaluated the tool and wants it to be better.
 
-2. **The feedback is fixable.** All 5 themes have clear solutions:
-   - Themes 1-4: Rewrite the DMs (manual, ~2 hours)
-   - Theme 5: Remove YAML upload requirement (code change, ~1 hour)
+2. **The feedback is fixable — and we fixed it.** All 10 themes have been addressed:
+   - Themes 1-4: Rewrote all 15 DMs (cold-dms-v2.md)
+   - Theme 5: Removed YAML upload, one-field UX
+   - Theme 6: Updated all "Gnosis Safe" references to "Safe wallet"
+   - Theme 7: Added rule metadata with rationale + editable sliders
+   - Theme 8: Added scenario gallery with 4 example risk profiles
+   - Theme 9: Added deterministic recommendation panel ("What to Do Next")
+   - Theme 10: Integrated Claude AI analysis — risk summary, stress tests, benchmarks, suggested rules
 
 3. **The distribution channel works.** Twitter/X DMs reached a real practitioner who engaged meaningfully. The issue is message quality and product friction, not channel viability.
 
@@ -73,13 +119,19 @@ One prospect responded to our Day 3 outreach with detailed, actionable feedback 
 
 | # | Action | Owner | Type | Status |
 |---|--------|-------|------|--------|
-| 1 | Remove YAML upload requirement from frontend | Code | Frontend change | In progress |
-| 2 | Add hardcoded default policy (5 rules) | Code | Frontend change | In progress |
-| 3 | Add sample Safe address as "try it" link | Code | Frontend change | In progress |
-| 4 | Improve page copy (shift from "deterministic policy" to "30-second risk audit") | Code | Frontend change | In progress |
-| 5 | Add human-readable rule descriptions to ReportCard | Code | Frontend change | In progress |
-| 6 | Rewrite all 15 DMs with pain openers + credibility anchors | Manual | cold-dms-v2.md | In progress |
-| 7 | Draft follow-up reply to engaged prospect | Manual | follow-up-reply.md | In progress |
-| 8 | Send follow-up reply | Manual | Twitter/X DM | Pending |
-| 9 | Send next batch of 5 DMs using v2 templates | Manual | Twitter/X DM | Pending |
-| 10 | Deploy updated frontend to Vercel | Manual | `git push` or `vercel --prod` | Pending |
+| 1 | Remove YAML upload requirement from frontend | Code | Frontend change | DONE |
+| 2 | Add hardcoded default policy (5 rules) | Code | Frontend change | DONE |
+| 3 | Add sample Safe address as "try it" link | Code | Frontend change | DONE |
+| 4 | Improve page copy (shift from "deterministic policy" to "30-second risk audit") | Code | Frontend change | DONE |
+| 5 | Add human-readable rule descriptions to ReportCard | Code | Frontend change | DONE |
+| 6 | Rewrite all 15 DMs with pain openers + credibility anchors | Manual | cold-dms-v2.md | DONE |
+| 7 | Draft follow-up reply to engaged prospect | Manual | follow-up-reply.md | DONE |
+| 8 | Update "Gnosis Safe" → "Safe wallet" terminology | Code | Frontend + backend | DONE |
+| 9 | Add editable rule sliders with rationale ("Why this rule") | Code | Frontend | DONE |
+| 10 | Add scenario gallery (4 example risk profiles) | Code | Frontend | DONE |
+| 11 | Add deterministic recommendation panel | Code | Backend + frontend | DONE |
+| 12 | Integrate Claude AI analysis (risk summary, stress tests, benchmarks) | Code | New backend module + frontend | DONE |
+| 13 | Deploy updated frontend to Vercel | Manual | `vercel --prod` | DONE |
+| 14 | Deploy updated backend to Railway | Manual | `railway up` | DONE |
+| 15 | Send follow-up reply | Manual | Twitter/X DM | Pending |
+| 16 | Send next batch of 5 DMs using v2 templates | Manual | Twitter/X DM | Pending |

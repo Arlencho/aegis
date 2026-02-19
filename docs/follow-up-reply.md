@@ -8,17 +8,25 @@ Reply to the prospect who gave detailed feedback across 5 themes on Day 3.
 
 > Really appreciate the feedback — especially breaking it into those 5 areas. That's the most useful response I've gotten and I want you to know I acted on all of it.
 >
-> Biggest change: the demo no longer requires uploading a YAML file. You can now just paste any Safe address and get a compliance report in 30 seconds — no signup, no file upload, nothing: https://frontend-drab-three-76.vercel.app
+> Here's what shipped since your message:
 >
-> I also rewrote the outreach messaging based on your notes around pain specificity, credibility anchoring, and framing the ask as validation instead of a pitch.
+> - No more YAML upload — just paste any Safe address and get a report in 30 seconds
+> - The 5 rules are now visible and editable with sliders, each with a "why this threshold" explanation
+> - Added a scenario gallery showing 4 different risk profiles (compliant, over-concentrated, low stablecoins, dormant)
+> - Integrated AI-powered analysis — Claude now generates a risk summary, stress tests ("what if ETH drops 30%"), benchmarks against similar treasuries, and even suggests additional rules you should consider
 >
-> You basically shaped the product iteration. I'd love 15 minutes to walk you through what changed and get your take on whether it lands better now. Would [DAY] or [DAY] work for a quick call?
+> The AI layer was the biggest addition. It takes the deterministic audit results and adds real intelligence on top — not just "you're non-compliant" but "here's what to do about it and here's what would break if the market moves."
+>
+> You basically shaped the product. I'd love 15 minutes to walk you through the iteration and get your take on whether the AI analysis lands. Would [DAY] or [DAY] work for a quick call?
+>
+> Try it yourself: https://frontend-drab-three-76.vercel.app
 
 ---
 
 ## Notes
 
-- Replace `[DAY]` with two specific days/times (e.g. "Tuesday" or "Thursday afternoon")
-- Send within 24 hours of shipping the frontend update
-- If they respond but don't want a call, offer async: "Totally fine — I can send a 2-minute Loom walkthrough of the changes instead"
+- Replace `[DAY]` with two specific days/times (e.g. "Thursday" or "Friday afternoon")
+- Send within 24 hours of shipping the updates
+- If they respond but don't want a call, offer async: "Totally fine — I can send a 2-minute Loom walkthrough of the AI analysis instead"
 - If they try the demo and give more feedback, that's equally valuable signal
+- Key selling point: they asked "where's the AI?" — now you can show it
