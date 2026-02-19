@@ -81,9 +81,12 @@ async def join_waitlist(request: WaitlistRequest):
     if "@" not in request.email or "." not in request.email:
         raise HTTPException(status_code=400, detail="Invalid email address")
 
-    is_new = await add_to_waitlist(request.email, request.name, request.source)
+    result = await add_to_waitlist(request.email, request.name, request.source)
 
-    if is_new:
+    if result is None:
+        raise HTTPException(status_code=503, detail="Waitlist temporarily unavailable. Please try again later.")
+
+    if result:
         return WaitlistResponse(
             success=True,
             message="You're on the list! We'll reach out when AEGIS Pro launches.",

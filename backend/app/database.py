@@ -48,10 +48,13 @@ async def close_db():
 
 async def add_to_waitlist(
     email: str, name: str | None = None, source: str = "website"
-) -> bool:
-    """Insert email into waitlist. Returns True if new, False if duplicate."""
+) -> bool | None:
+    """Insert email into waitlist.
+
+    Returns True if new signup, False if duplicate, None if DB unavailable.
+    """
     if not _pool:
-        return False
+        return None
     try:
         result = await _pool.fetchval(
             """INSERT INTO waitlist (email, name, source)
@@ -65,7 +68,7 @@ async def add_to_waitlist(
         return result is not None
     except Exception as e:
         logger.error(f"Waitlist insert failed: {e}")
-        return False
+        return None
 
 
 async def get_waitlist_count() -> int:
