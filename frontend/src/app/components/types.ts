@@ -103,6 +103,7 @@ export interface Client {
   webhook_url: string | null;
   webhook_secret: string | null;
   wallet_count?: number;
+  aggregate_risk_level?: "low" | "medium" | "high" | null;
   created_at: string;
 }
 

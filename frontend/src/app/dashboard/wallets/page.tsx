@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import type { Wallet } from "../../components/types";
+import { CHAIN_BADGE_COLORS } from "../../components/constants";
 import { useToast } from "../components/Toast";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -165,7 +166,7 @@ export default function WalletsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
-                          ${wallet.chain === "ethereum" ? "bg-blue-400/10 text-blue-400" : "bg-purple-400/10 text-purple-400"}`}>
+                          ${CHAIN_BADGE_COLORS[wallet.chain] || "bg-gray-400/10 text-gray-400"}`}>
                           {wallet.chain}
                         </span>
                         {wallet.label && (

@@ -3,6 +3,7 @@
 import asyncio
 import os
 import re
+import secrets
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -23,6 +24,7 @@ from .database import (
     init_db, close_db,
     add_to_waitlist, get_waitlist_count,
     save_audit, get_audit_history, get_audit_detail,
+    set_share_token, clear_share_token, get_audit_by_share_token,
     create_user, get_user_by_email, get_user_by_id, update_user_name,
     create_organization, get_user_orgs, get_org, get_org_member, get_org_members,
     add_org_member, remove_org_member,
@@ -944,13 +946,11 @@ async def audit_history(
     return {"wallet_address": wallet_address, "audits": history}
 
 
-@app.get("/audits/detail/{audit_id}")
-async def audit_detail(audit_id: int, user: dict = Depends(get_current_user)):
-    """Return a single audit with full report data (auth required, ownership checked)."""
+async def _check_audit_ownership(audit_id: int, user: dict) -> dict:
+    """Fetch audit and verify user has access. Raises HTTPException if not."""
     result = await get_audit_detail(audit_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Audit not found")
-    # Ownership check: user must own the audit directly or via client access
     user_id = user.get("sub") or user.get("id")
     if user_id:
         user_id = int(user_id)
@@ -963,4 +963,41 @@ async def audit_detail(audit_id: int, user: dict = Depends(get_current_user)):
         has_access = await user_can_access_client(user_id, audit_client_id)
     if not has_access:
         raise HTTPException(status_code=404, detail="Audit not found")
+    return result
+
+
+@app.get("/audits/detail/{audit_id}")
+async def audit_detail(audit_id: int, user: dict = Depends(get_current_user)):
+    """Return a single audit with full report data (auth required, ownership checked)."""
+    return await _check_audit_ownership(audit_id, user)
+
+
+@app.post("/audits/{audit_id}/share")
+async def create_share_link(audit_id: int, user: dict = Depends(get_current_user)):
+    """Generate a public share link for an audit."""
+    audit = await _check_audit_ownership(audit_id, user)
+    # If already shared, return existing token
+    if audit.get("share_token"):
+        return {"share_token": audit["share_token"]}
+    token = secrets.token_urlsafe(24)
+    success = await set_share_token(audit_id, token)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to create share link")
+    return {"share_token": token}
+
+
+@app.delete("/audits/{audit_id}/share")
+async def revoke_share_link(audit_id: int, user: dict = Depends(get_current_user)):
+    """Revoke a public share link for an audit."""
+    await _check_audit_ownership(audit_id, user)
+    await clear_share_token(audit_id)
+    return {"success": True}
+
+
+@app.get("/public/audit/{share_token}")
+async def public_audit(share_token: str):
+    """Fetch a publicly shared audit (no auth required)."""
+    result = await get_audit_by_share_token(share_token)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Shared audit not found or link has been revoked")
     return result

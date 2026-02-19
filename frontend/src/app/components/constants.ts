@@ -11,6 +11,15 @@ export const SAMPLE_ADDRESSES: Record<Chain, string> = {
   polygon: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
 };
 
+export const CHAIN_BADGE_COLORS: Record<string, string> = {
+  ethereum: "bg-blue-400/10 text-blue-400",
+  solana: "bg-purple-400/10 text-purple-400",
+  bsc: "bg-yellow-400/10 text-yellow-400",
+  base: "bg-sky-400/10 text-sky-400",
+  arbitrum: "bg-orange-400/10 text-orange-400",
+  polygon: "bg-violet-400/10 text-violet-400",
+};
+
 export const CHAIN_CONFIG: Record<Chain, { name: string; placeholder: string; label: string }> = {
   ethereum: { name: "Ethereum", placeholder: "0x...", label: "Wallet Address" },
   solana: { name: "Solana", placeholder: "Base58 address...", label: "Solana Wallet Address" },

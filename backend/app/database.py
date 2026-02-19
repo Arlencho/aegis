@@ -209,6 +209,18 @@ async def init_db():
             except Exception:
                 pass
 
+            # --- Share token on audit_history ---
+            try:
+                await conn.execute("""
+                    ALTER TABLE audit_history ADD COLUMN IF NOT EXISTS share_token TEXT
+                """)
+                await conn.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_history_share_token
+                        ON audit_history (share_token) WHERE share_token IS NOT NULL
+                """)
+            except Exception:
+                pass
+
             # --- Migration: move old wallets (user_id-based) to client model ---
             # Check if the old wallets table has a user_id column
             has_user_id_col = await conn.fetchval("""
@@ -515,11 +527,18 @@ async def get_clients(user_id: int, org_id: int | None = None) -> list[dict]:
     if not _pool:
         return []
     try:
+        risk_subquery = """(SELECT CASE MAX(
+                    CASE w2.last_risk_level
+                        WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0
+                    END)
+                    WHEN 3 THEN 'high' WHEN 2 THEN 'medium' WHEN 1 THEN 'low' ELSE NULL
+                END FROM wallets w2 WHERE w2.client_id = c.id) as aggregate_risk_level"""
         if org_id:
             # Get clients for a specific org
             rows = await _pool.fetch(
-                """SELECT c.id, c.user_id, c.org_id, c.name, c.description, c.created_at,
-                          (SELECT COUNT(*) FROM wallets w WHERE w.client_id = c.id) as wallet_count
+                f"""SELECT c.id, c.user_id, c.org_id, c.name, c.description, c.created_at,
+                          (SELECT COUNT(*) FROM wallets w WHERE w.client_id = c.id) as wallet_count,
+                          {risk_subquery}
                      FROM clients c
                     WHERE c.org_id = $1
                     ORDER BY c.created_at DESC""",
@@ -528,8 +547,9 @@ async def get_clients(user_id: int, org_id: int | None = None) -> list[dict]:
         else:
             # Get personal clients + clients from all user's orgs
             rows = await _pool.fetch(
-                """SELECT c.id, c.user_id, c.org_id, c.name, c.description, c.created_at,
-                          (SELECT COUNT(*) FROM wallets w WHERE w.client_id = c.id) as wallet_count
+                f"""SELECT c.id, c.user_id, c.org_id, c.name, c.description, c.created_at,
+                          (SELECT COUNT(*) FROM wallets w WHERE w.client_id = c.id) as wallet_count,
+                          {risk_subquery}
                      FROM clients c
                     WHERE c.user_id = $1
                        OR c.org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
@@ -1160,7 +1180,7 @@ async def get_audit_detail(audit_id: int) -> dict | None:
         row = await _pool.fetchrow(
             """SELECT id, wallet_address, chain, total_usd, overall_status,
                       passed, failed, total_rules, risk_level,
-                      report_json, created_at, user_id, client_id
+                      report_json, created_at, user_id, client_id, share_token
                  FROM audit_history
                 WHERE id = $1""",
             audit_id,
@@ -1173,4 +1193,61 @@ async def get_audit_detail(audit_id: int) -> dict | None:
         return result
     except Exception as e:
         logger.error(f"Audit detail fetch failed: {e}")
+        return None
+
+
+# --- Share Token Management ---
+
+
+async def set_share_token(audit_id: int, token: str) -> bool:
+    """Set a share token on an audit. Returns True on success."""
+    if not _pool:
+        return False
+    try:
+        result = await _pool.execute(
+            "UPDATE audit_history SET share_token = $2 WHERE id = $1",
+            audit_id, token,
+        )
+        return result == "UPDATE 1"
+    except Exception as e:
+        logger.error(f"Set share token failed: {e}")
+        return False
+
+
+async def clear_share_token(audit_id: int) -> bool:
+    """Remove a share token from an audit. Returns True on success."""
+    if not _pool:
+        return False
+    try:
+        result = await _pool.execute(
+            "UPDATE audit_history SET share_token = NULL WHERE id = $1",
+            audit_id,
+        )
+        return result == "UPDATE 1"
+    except Exception as e:
+        logger.error(f"Clear share token failed: {e}")
+        return False
+
+
+async def get_audit_by_share_token(token: str) -> dict | None:
+    """Fetch an audit by its share token (public access — no user/client IDs returned)."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """SELECT id, wallet_address, chain, total_usd, overall_status,
+                      passed, failed, total_rules, risk_level,
+                      report_json, created_at
+                 FROM audit_history
+                WHERE share_token = $1""",
+            token,
+        )
+        if row is None:
+            return None
+        result = dict(row)
+        if isinstance(result.get("report_json"), str):
+            result["report_json"] = json.loads(result["report_json"])
+        return result
+    except Exception as e:
+        logger.error(f"Share token lookup failed: {e}")
         return None

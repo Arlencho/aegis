@@ -100,6 +100,12 @@ export default function ClientsPage() {
     }
   }
 
+  const riskColors: Record<string, string> = {
+    low: "text-green-400 bg-green-400/10",
+    medium: "text-yellow-400 bg-yellow-400/10",
+    high: "text-red-400 bg-red-400/10",
+  };
+
   async function handleDelete(clientId: number) {
     if (!confirm("Delete this client and all its wallets? This cannot be undone.")) return;
     setDeletingId(clientId);
@@ -246,6 +252,12 @@ export default function ClientsPage() {
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 font-medium">
                     {client.wallet_count ?? 0} wallet{(client.wallet_count ?? 0) !== 1 ? "s" : ""}
                   </span>
+                  {client.aggregate_risk_level && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
+                      ${riskColors[client.aggregate_risk_level] || "text-gray-400 bg-gray-400/10"}`}>
+                      {client.aggregate_risk_level} risk
+                    </span>
+                  )}
                   {client.org_id ? (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-400/10 text-purple-400 font-medium">
                       {orgs.find((o) => o.id === client.org_id)?.name || "Org"}

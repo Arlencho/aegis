@@ -17,6 +17,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { AuditHistorySummary } from "../../components/types";
+import { CHAIN_BADGE_COLORS } from "../../components/constants";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -30,6 +31,8 @@ export default function HistoryPage() {
   const [chainFilter, setChainFilter] = useState<string>("all");
   const [riskFilter, setRiskFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => setMounted(true), []);
 
@@ -75,11 +78,54 @@ export default function HistoryPage() {
     }));
   const showCharts = mounted && chartData.length > 1;
 
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else if (next.size < 2) {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function handleCompareNav() {
+    const ids = [...selectedIds];
+    if (ids.length === 2) {
+      router.push(`/dashboard/audits/compare?a=${ids[0]}&b=${ids[1]}`);
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Audit History</h1>
-        <p className="text-gray-400 text-sm mt-1">All compliance audits across your wallets</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Audit History</h1>
+          <p className="text-gray-400 text-sm mt-1">All compliance audits across your wallets</p>
+        </div>
+        {filtered.length >= 2 && (
+          <div className="flex items-center gap-2">
+            {compareMode && selectedIds.size === 2 && (
+              <button
+                onClick={handleCompareNav}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs
+                           font-medium transition min-h-[36px]"
+              >
+                Compare Selected
+              </button>
+            )}
+            <button
+              onClick={() => { setCompareMode(!compareMode); setSelectedIds(new Set()); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition min-h-[36px]
+                ${compareMode
+                  ? "bg-gray-700 text-white"
+                  : "bg-gray-900 border border-gray-800 text-gray-400 hover:text-gray-300"}`}
+            >
+              {compareMode ? "Cancel" : "Compare"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -204,13 +250,14 @@ export default function HistoryPage() {
             {filtered.map((audit) => (
               <div
                 key={audit.id}
-                onClick={() => router.push(`/dashboard/audits/${audit.id}`)}
-                className="bg-gray-900 border border-gray-800 rounded-lg p-4 cursor-pointer
-                           hover:border-gray-700 transition active:bg-gray-800/50"
+                onClick={() => compareMode ? toggleSelect(audit.id) : router.push(`/dashboard/audits/${audit.id}`)}
+                className={`bg-gray-900 border rounded-lg p-4 cursor-pointer
+                           hover:border-gray-700 transition active:bg-gray-800/50
+                           ${compareMode && selectedIds.has(audit.id) ? "border-blue-500" : "border-gray-800"}`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
-                    ${audit.chain === "ethereum" ? "bg-blue-400/10 text-blue-400" : "bg-purple-400/10 text-purple-400"}`}>
+                    ${CHAIN_BADGE_COLORS[audit.chain] || "bg-gray-400/10 text-gray-400"}`}>
                     {audit.chain}
                   </span>
                   <span className={`text-xs font-medium
@@ -248,6 +295,7 @@ export default function HistoryPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800 text-gray-500 text-xs uppercase tracking-wider">
+                  {compareMode && <th className="py-3 px-2 w-8" />}
                   <th className="text-left py-3 px-3">Date</th>
                   <th className="text-left py-3 px-3">Chain</th>
                   <th className="text-left py-3 px-3">Status</th>
@@ -260,15 +308,26 @@ export default function HistoryPage() {
                 {filtered.map((audit) => (
                   <tr
                     key={audit.id}
-                    onClick={() => router.push(`/dashboard/audits/${audit.id}`)}
-                    className="border-b border-gray-800/50 hover:bg-gray-900/50 cursor-pointer transition"
+                    onClick={() => compareMode ? toggleSelect(audit.id) : router.push(`/dashboard/audits/${audit.id}`)}
+                    className={`border-b border-gray-800/50 hover:bg-gray-900/50 cursor-pointer transition
+                      ${compareMode && selectedIds.has(audit.id) ? "bg-blue-500/5" : ""}`}
                   >
+                    {compareMode && (
+                      <td className="py-3 px-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(audit.id)}
+                          readOnly
+                          className="accent-blue-500"
+                        />
+                      </td>
+                    )}
                     <td className="py-3 px-3 text-gray-400">
                       {new Date(audit.created_at).toLocaleDateString()}
                     </td>
                     <td className="py-3 px-3">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium
-                        ${audit.chain === "ethereum" ? "bg-blue-400/10 text-blue-400" : "bg-purple-400/10 text-purple-400"}`}>
+                        ${CHAIN_BADGE_COLORS[audit.chain] || "bg-gray-400/10 text-gray-400"}`}>
                         {audit.chain}
                       </span>
                     </td>

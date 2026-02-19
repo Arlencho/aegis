@@ -12,6 +12,8 @@ import type { ComplianceReport } from "../../../components/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
 interface AuditDetail {
   id: number;
   wallet_address: string;
@@ -24,6 +26,7 @@ interface AuditDetail {
   risk_level: string | null;
   report_json: ComplianceReport;
   created_at: string;
+  share_token?: string | null;
 }
 
 export default function AuditDetailPage() {
@@ -35,6 +38,9 @@ export default function AuditDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     async function fetchAudit() {
@@ -50,6 +56,7 @@ export default function AuditDetailPage() {
         if (res.ok) {
           const data = await res.json();
           setAudit(data);
+          if (data.share_token) setShareToken(data.share_token);
         } else {
           setNotFound(true);
         }
@@ -94,6 +101,47 @@ export default function AuditDetailPage() {
       console.error("PDF generation failed:", err);
     } finally {
       setPdfLoading(false);
+    }
+  }
+
+  async function handleShare() {
+    if (!audit) return;
+    if (shareToken) {
+      // Copy existing link
+      await navigator.clipboard.writeText(`${APP_URL}/public/audit/${shareToken}`);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+      return;
+    }
+    setShareLoading(true);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
+      const res = await fetch(`${API_URL}/audits/${audit.id}/share`, { method: "POST", headers });
+      if (res.ok) {
+        const data = await res.json();
+        setShareToken(data.share_token);
+        await navigator.clipboard.writeText(`${APP_URL}/public/audit/${data.share_token}`);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function handleRevoke() {
+    if (!audit || !shareToken) return;
+    if (!confirm("Revoke share link? Anyone with the link will no longer be able to view this audit.")) return;
+    try {
+      const headers: Record<string, string> = {};
+      if (session?.accessToken) headers.Authorization = `Bearer ${session.accessToken}`;
+      const res = await fetch(`${API_URL}/audits/${audit.id}/share`, { method: "DELETE", headers });
+      if (res.ok) setShareToken(null);
+    } catch {
+      // ignore
     }
   }
 
@@ -150,6 +198,31 @@ export default function AuditDetailPage() {
               minute: "2-digit",
             })}
           </span>
+        </div>
+
+        {/* Share / Revoke buttons */}
+        <div className="flex items-center gap-2 mt-3">
+          <button
+            onClick={handleShare}
+            disabled={shareLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 border border-gray-800
+                       hover:border-gray-700 rounded-lg text-xs text-gray-400 hover:text-gray-300
+                       transition min-h-[36px] disabled:opacity-50"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+            </svg>
+            {shareLoading ? "Creating..." : shareCopied ? "Link copied!" : shareToken ? "Copy share link" : "Share"}
+          </button>
+          {shareToken && (
+            <button
+              onClick={handleRevoke}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-400/70
+                         hover:text-red-400 transition min-h-[36px]"
+            >
+              Revoke link
+            </button>
+          )}
         </div>
       </div>
 
