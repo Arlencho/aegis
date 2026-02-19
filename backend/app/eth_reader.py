@@ -28,6 +28,7 @@ ETHERSCAN_DELAY = 0.25
 # Etherscan V2 chain IDs for EVM chains
 CHAIN_IDS: dict[str, str] = {
     "ethereum": "1",
+    "bsc": "56",
     "base": "8453",
     "arbitrum": "42161",
     "polygon": "137",
@@ -36,6 +37,7 @@ CHAIN_IDS: dict[str, str] = {
 # Native token symbols per chain
 NATIVE_TOKENS: dict[str, str] = {
     "ethereum": "ETH",
+    "bsc": "BNB",
     "base": "ETH",
     "arbitrum": "ETH",
     "polygon": "POL",

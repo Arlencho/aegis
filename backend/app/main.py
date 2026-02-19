@@ -71,7 +71,7 @@ def _check_rate_limit(client_ip: str) -> bool:
 
 # --- Ethereum balance fetching with Smart fallback ---
 
-EVM_CHAINS = {"ethereum", "base", "arbitrum", "polygon"}
+EVM_CHAINS = {"ethereum", "bsc", "base", "arbitrum", "polygon"}
 
 
 async def _fetch_evm_balances(address: str, chain: str = "ethereum") -> dict | None:

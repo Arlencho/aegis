@@ -4,13 +4,14 @@ import { CHAIN_CONFIG } from "../constants";
 const CHAIN_COLORS: Record<Chain, string> = {
   ethereum: "bg-blue-600/20 border-blue-500 text-blue-300",
   solana: "bg-purple-600/20 border-purple-500 text-purple-300",
+  bsc: "bg-yellow-600/20 border-yellow-500 text-yellow-300",
   base: "bg-blue-600/20 border-blue-500 text-blue-300",
   arbitrum: "bg-sky-600/20 border-sky-500 text-sky-300",
   polygon: "bg-violet-600/20 border-violet-500 text-violet-300",
 };
 
 const ACTIVE_CHAINS: Chain[] = ["ethereum", "solana"];
-const COMING_SOON_CHAINS: Chain[] = ["base", "arbitrum", "polygon"];
+const COMING_SOON_CHAINS: Chain[] = ["bsc", "base", "arbitrum", "polygon"];
 
 export default function ChainSelector({
   chain,
