@@ -129,7 +129,11 @@ async def validate(safe_address: str = Form(...), policy_file: UploadFile = File
     # Fetch current Safe state
     balances = await fetch_safe_balances(safe_address)
     if balances is None:
-        raise HTTPException(status_code=404, detail=f"Could not fetch balances for Safe: {safe_address}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not fetch balances for address: {safe_address}. "
+                   "Ethereum audits require a Gnosis Safe multisig wallet address.",
+        )
 
     # Fetch transaction history
     transactions = await fetch_safe_transactions(safe_address, limit=20)
@@ -168,7 +172,9 @@ async def validate_json(request: ValidateRequest):
         if balances is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Could not fetch balances for Safe: {request.safe_address}",
+                detail=f"Could not fetch balances for address: {request.safe_address}. "
+                       "Ethereum audits currently require a Gnosis Safe multisig wallet address. "
+                       "Regular ETH addresses (EOAs) are not yet supported.",
             )
         transactions = await fetch_safe_transactions(request.safe_address, limit=20)
 

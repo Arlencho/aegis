@@ -80,9 +80,9 @@ const SAMPLE_ADDRESSES: Record<Chain, string> = {
   solana: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
 };
 
-const CHAIN_CONFIG: Record<Chain, { name: string; placeholder: string }> = {
-  ethereum: { name: "Ethereum", placeholder: "0x..." },
-  solana: { name: "Solana", placeholder: "Base58 address..." },
+const CHAIN_CONFIG: Record<Chain, { name: string; placeholder: string; label: string }> = {
+  ethereum: { name: "Ethereum", placeholder: "0x...", label: "Gnosis Safe Address" },
+  solana: { name: "Solana", placeholder: "Base58 address...", label: "Solana Wallet Address" },
 };
 
 interface RuleConfig {
@@ -667,7 +667,7 @@ export default function Home() {
           <form onSubmit={handleSubmit} className="space-y-4 mb-8">
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-300">
-                {chain === "ethereum" ? "Safe Wallet Address" : "Solana Wallet Address"}
+                {CHAIN_CONFIG[chain].label}
               </label>
               <input
                 type="text"
