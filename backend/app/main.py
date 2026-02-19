@@ -1,5 +1,7 @@
 """AEGIS API — Deterministic Policy Enforcement for DAO Treasuries"""
 
+import os
+
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,12 +13,19 @@ import yaml
 
 app = FastAPI(title="AEGIS", version="0.1.0")
 
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict in production
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/")
+def root():
+    return {"service": "AEGIS", "version": "0.1.0", "docs": "/docs"}
 
 
 @app.get("/health")
