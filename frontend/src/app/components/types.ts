@@ -119,6 +119,18 @@ export interface Wallet {
   created_at: string;
 }
 
+export interface Notification {
+  id: number;
+  type: "audit_alert" | "risk_change" | "schedule_failure";
+  title: string;
+  body: string;
+  severity: "info" | "warning" | "critical";
+  wallet_id: number | null;
+  audit_id: number | null;
+  is_read: boolean;
+  created_at: string;
+}
+
 export type Chain = "ethereum" | "solana" | "bsc" | "base" | "arbitrum" | "polygon";
 
 export interface Scenario {

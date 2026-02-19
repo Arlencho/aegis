@@ -30,8 +30,10 @@ from .database import (
     user_can_access_client,
     create_wallet, get_wallets, get_wallets_for_user, get_wallet, update_wallet,
     delete_wallet, update_wallet_audit, update_wallet_schedule, get_dashboard_stats,
+    get_notifications, get_unread_count, mark_notifications_read,
 )
 from .scheduler import scheduler_loop
+from .notifications import notify_audit_result
 
 import yaml
 
@@ -198,6 +200,10 @@ class WalletAuditRequest(BaseModel):
 class WalletScheduleRequest(BaseModel):
     frequency: str | None = None  # "daily", "weekly", "monthly", or null to disable
     include_ai: bool = False
+
+
+class MarkReadRequest(BaseModel):
+    notification_ids: list[int] | None = None
 
 
 class OrgCreateRequest(BaseModel):
@@ -606,7 +612,7 @@ async def audit_wallet(
     if request.include_ai:
         report["ai_analysis"] = await analyze_treasury(balances, report)
 
-    await save_audit(address, chain, report, client_id=wallet["client_id"], trigger="manual")
+    audit_id = await save_audit(address, chain, report, client_id=wallet["client_id"], trigger="manual")
 
     # Update wallet last audit info
     risk_level = None
@@ -614,6 +620,16 @@ async def audit_wallet(
     if isinstance(ai, dict):
         risk_level = ai.get("risk_level")
     await update_wallet_audit(wallet_id, risk_level)
+
+    # In-app notifications
+    await notify_audit_result(
+        wallet_id=wallet_id,
+        wallet_label=wallet.get("label"),
+        wallet_address=address,
+        report=report,
+        trigger="manual",
+        audit_id=audit_id,
+    )
 
     return report
 
@@ -653,6 +669,39 @@ async def dashboard_history(
     # Sort by created_at desc and limit
     all_audits.sort(key=lambda a: a.get("created_at", ""), reverse=True)
     return {"audits": all_audits[:limit]}
+
+
+# --- Notification endpoints ---
+
+@app.get("/notifications")
+async def list_notifications(
+    user: dict = Depends(get_current_user),
+    unread_only: bool = False,
+    limit: int = 50,
+):
+    """Get notifications for the current user."""
+    user_id = _get_user_id(user)
+    notifications = await get_notifications(user_id, unread_only=unread_only, limit=min(limit, 100))
+    return {"notifications": notifications}
+
+
+@app.get("/notifications/unread-count")
+async def unread_notification_count(user: dict = Depends(get_current_user)):
+    """Get unread notification count for the current user."""
+    user_id = _get_user_id(user)
+    count = await get_unread_count(user_id)
+    return {"count": count}
+
+
+@app.post("/notifications/mark-read")
+async def mark_read(
+    request: MarkReadRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Mark notifications as read. If no IDs provided, marks all as read."""
+    user_id = _get_user_id(user)
+    updated = await mark_notifications_read(user_id, request.notification_ids)
+    return {"updated": updated}
 
 
 # --- Waitlist endpoints ---

@@ -178,6 +178,26 @@ async def init_db():
             except Exception:
                 pass  # Columns may already exist
 
+            # --- Notifications table ---
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id          SERIAL PRIMARY KEY,
+                    user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    type        TEXT NOT NULL DEFAULT 'audit_alert',
+                    title       TEXT NOT NULL,
+                    body        TEXT NOT NULL,
+                    severity    TEXT NOT NULL DEFAULT 'info',
+                    wallet_id   INT REFERENCES wallets(id) ON DELETE SET NULL,
+                    audit_id    INT REFERENCES audit_history(id) ON DELETE SET NULL,
+                    is_read     BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_notifications_user
+                    ON notifications (user_id, is_read, created_at DESC)
+            """)
+
             # --- Migration: move old wallets (user_id-based) to client model ---
             # Check if the old wallets table has a user_id column
             has_user_id_col = await conn.fetchval("""
@@ -780,6 +800,133 @@ async def advance_wallet_schedule(
         )
     except Exception as e:
         logger.error(f"Advance schedule failed: {e}")
+
+
+# --- Notifications ---
+
+
+async def create_notification(
+    user_id: int, ntype: str, title: str, body: str,
+    severity: str = "info", wallet_id: int | None = None, audit_id: int | None = None,
+) -> dict | None:
+    """Insert a single notification for a user."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """INSERT INTO notifications (user_id, type, title, body, severity, wallet_id, audit_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               RETURNING id, user_id, type, title, body, severity, wallet_id, audit_id, is_read, created_at""",
+            user_id, ntype, title, body, severity, wallet_id, audit_id,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Notification creation failed: {e}")
+        return None
+
+
+async def create_notifications_for_wallet(
+    wallet_id: int, ntype: str, title: str, body: str,
+    severity: str = "info", audit_id: int | None = None,
+) -> int:
+    """Create notifications for all users who can access a wallet's client. Returns count created."""
+    if not _pool:
+        return 0
+    try:
+        async with _pool.acquire() as conn:
+            # Resolve all users who should be notified
+            rows = await conn.fetch(
+                """SELECT DISTINCT COALESCE(om.user_id, c.user_id) AS uid
+                     FROM wallets w
+                     JOIN clients c ON c.id = w.client_id
+                     LEFT JOIN org_members om ON om.org_id = c.org_id
+                    WHERE w.id = $1
+                      AND COALESCE(om.user_id, c.user_id) IS NOT NULL""",
+                wallet_id,
+            )
+            count = 0
+            for row in rows:
+                uid = row["uid"]
+                await conn.execute(
+                    """INSERT INTO notifications (user_id, type, title, body, severity, wallet_id, audit_id)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                    uid, ntype, title, body, severity, wallet_id, audit_id,
+                )
+                count += 1
+            return count
+    except Exception as e:
+        logger.error(f"Wallet notification fan-out failed: {e}")
+        return 0
+
+
+async def get_notifications(
+    user_id: int, unread_only: bool = False, limit: int = 50,
+) -> list[dict]:
+    """List notifications for a user, newest first."""
+    if not _pool:
+        return []
+    try:
+        if unread_only:
+            rows = await _pool.fetch(
+                """SELECT id, type, title, body, severity, wallet_id, audit_id, is_read, created_at
+                     FROM notifications
+                    WHERE user_id = $1 AND is_read = FALSE
+                    ORDER BY created_at DESC
+                    LIMIT $2""",
+                user_id, limit,
+            )
+        else:
+            rows = await _pool.fetch(
+                """SELECT id, type, title, body, severity, wallet_id, audit_id, is_read, created_at
+                     FROM notifications
+                    WHERE user_id = $1
+                    ORDER BY created_at DESC
+                    LIMIT $2""",
+                user_id, limit,
+            )
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Notifications fetch failed: {e}")
+        return []
+
+
+async def get_unread_count(user_id: int) -> int:
+    """Return the number of unread notifications for a user."""
+    if not _pool:
+        return 0
+    try:
+        return await _pool.fetchval(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE",
+            user_id,
+        )
+    except Exception as e:
+        logger.error(f"Unread count failed: {e}")
+        return 0
+
+
+async def mark_notifications_read(
+    user_id: int, notification_ids: list[int] | None = None,
+) -> int:
+    """Mark notifications as read. If no IDs given, marks all unread for the user."""
+    if not _pool:
+        return 0
+    try:
+        if notification_ids:
+            result = await _pool.execute(
+                """UPDATE notifications SET is_read = TRUE
+                   WHERE user_id = $1 AND id = ANY($2::int[]) AND is_read = FALSE""",
+                user_id, notification_ids,
+            )
+        else:
+            result = await _pool.execute(
+                "UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE",
+                user_id,
+            )
+        # result is like "UPDATE 3"
+        return int(result.split()[-1]) if result else 0
+    except Exception as e:
+        logger.error(f"Mark notifications read failed: {e}")
+        return 0
 
 
 # --- Dashboard Stats ---

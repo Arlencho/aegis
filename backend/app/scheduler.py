@@ -16,6 +16,8 @@ from .eth_reader import fetch_eoa_balances
 from .solana_reader import fetch_solana_balances, fetch_solana_transactions
 from .safe_reader import fetch_safe_balances
 from .ai_analysis import analyze_treasury
+from .notifications import notify_audit_result
+from .alerts import send_alerts
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +77,28 @@ async def run_scheduled_audit(wallet: dict) -> None:
             risk_level = ai.get("risk_level")
 
         # Persist
-        await save_audit(
+        audit_id = await save_audit(
             address, chain, report,
             client_id=wallet.get("client_id"),
             trigger="scheduled",
         )
         await update_wallet_audit(wallet_id, risk_level)
         await advance_wallet_schedule(wallet_id, frequency, risk_level)
+
+        # In-app notifications
+        await notify_audit_result(
+            wallet_id=wallet_id,
+            wallet_label=wallet.get("label"),
+            wallet_address=address,
+            report=report,
+            trigger="scheduled",
+            audit_id=audit_id,
+        )
+
+        # External alerts (Telegram/email)
+        failures = [r for r in report.get("results", []) if not r.get("passed")]
+        if failures:
+            await send_alerts(address, failures, wallet.get("label") or address)
 
         logger.info(f"Scheduled audit complete: wallet {wallet_id}, risk={risk_level}")
 

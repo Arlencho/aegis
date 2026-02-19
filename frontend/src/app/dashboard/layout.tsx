@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import Sidebar from "./components/Sidebar";
+import NotificationBell from "./components/NotificationBell";
 
 export default async function DashboardLayout({
   children,
@@ -32,6 +33,7 @@ export default async function DashboardLayout({
               <span className="text-xs px-2 py-1 rounded-full bg-gray-800 text-gray-400">
                 Free Plan
               </span>
+              <NotificationBell />
               <span className="text-sm text-gray-400 hidden sm:inline">
                 {session.user.email}
               </span>
