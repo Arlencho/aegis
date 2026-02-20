@@ -341,7 +341,15 @@ def _check_inactivity_alert(transactions: list[dict] | None, params: dict, sever
     for tx in transactions:
         date_str = tx.get("execution_date")
         if date_str:
-            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            try:
+                # Try ISO format first (Safe API / Solana)
+                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            except ValueError:
+                try:
+                    # Fallback: Unix timestamp string (Etherscan)
+                    dt = datetime.fromtimestamp(int(date_str), tz=timezone.utc)
+                except (ValueError, TypeError, OSError):
+                    continue
             if latest_date is None or dt > latest_date:
                 latest_date = dt
 

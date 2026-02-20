@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 
 import httpx
 
@@ -83,6 +84,16 @@ def _safe_int(value: str, default: int = 0) -> int:
         return int(value)
     except (ValueError, TypeError):
         return default
+
+
+def _ts_to_iso(ts: str | None) -> str | None:
+    """Convert a Unix timestamp string to ISO-8601 format."""
+    if not ts:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+    except (ValueError, TypeError):
+        return ts  # already ISO or unparseable — pass through
 
 
 async def fetch_eoa_balances(address: str, chain: str = "ethereum") -> dict | None:
@@ -294,7 +305,7 @@ async def fetch_eoa_transactions(
 
         # Map to safe_reader transaction shape
         transactions.append({
-            "execution_date": tx.get("timeStamp"),
+            "execution_date": _ts_to_iso(tx.get("timeStamp")),
             "value_wei": value_wei,
             "value_eth": value_wei / 1e18,
             "to": tx.get("to"),

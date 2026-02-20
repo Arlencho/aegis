@@ -130,9 +130,19 @@ async def init_db():
                     UNIQUE (client_id, address, chain)
                 )
             """)
-            await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_wallets_client ON wallets (client_id)
-            """)
+            # Ensure client_id column exists (for tables created before client model)
+            try:
+                await conn.execute("""
+                    ALTER TABLE wallets ADD COLUMN IF NOT EXISTS client_id INT REFERENCES clients(id) ON DELETE CASCADE
+                """)
+            except Exception:
+                pass
+            try:
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_wallets_client ON wallets (client_id)
+                """)
+            except Exception:
+                pass
             # --- Schedule columns on wallets ---
             try:
                 await conn.execute("""
@@ -678,7 +688,7 @@ async def create_wallet(
                RETURNING id, client_id, address, chain, label, last_audit_at, last_risk_level,
                               schedule_frequency, schedule_include_ai, next_audit_at, created_at""",
             client_id,
-            address.lower().strip(),
+            _normalize_address(address, chain),
             chain,
             label,
         )
@@ -1092,6 +1102,13 @@ async def get_waitlist_count() -> int:
 # --- Audit History ---
 
 
+def _normalize_address(address: str, chain: str) -> str:
+    """Normalize wallet address — preserve case for Solana (base58), lowercase for EVM."""
+    if chain == "solana":
+        return address.strip()
+    return address.lower().strip()
+
+
 async def save_audit(
     wallet_address: str, chain: str, report: dict,
     client_id: int | None = None, trigger: str = "manual",
@@ -1111,7 +1128,7 @@ async def save_audit(
                     passed, failed, total_rules, risk_level, report_json, client_id, trigger)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
                RETURNING id""",
-            wallet_address.lower().strip(),
+            _normalize_address(wallet_address, chain),
             chain,
             report.get("total_usd", 0),
             report.get("overall_status", "UNKNOWN"),
@@ -1142,7 +1159,7 @@ async def get_audit_history(
                 WHERE wallet_address = $1
                 ORDER BY created_at DESC
                 LIMIT $2""",
-            wallet_address.lower().strip(),
+            wallet_address.strip(),
             limit,
         )
         return [dict(r) for r in rows]
