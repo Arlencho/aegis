@@ -1,5 +1,3 @@
-import Image from "next/image";
-
 export default function HeroSection() {
   return (
     <section className="relative py-24 md:py-36 lg:py-44 px-4 sm:px-6 md:px-12 overflow-hidden">
@@ -73,7 +71,11 @@ export default function HeroSection() {
                 {/* Card header */}
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-2">
-                    <Image src="/logo-shield-raw.png" alt="" width={32} height={35} className="w-8 h-auto" />
+                    <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      </svg>
+                    </div>
                     <span className="text-sm font-semibold text-gray-200">AEGIS Audit</span>
                   </div>
                   <span className="text-[10px] px-2 py-1 bg-green-900/50 text-green-400 rounded-full font-medium border border-green-800/30">
