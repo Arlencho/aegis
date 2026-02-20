@@ -98,7 +98,7 @@ async def send_password_reset_email(email: str, token: str) -> None:
                 },
                 json={
                     "personalizations": [{"to": [{"email": email}]}],
-                    "from": {"email": "noreply@aegistreasury.com", "name": "AEGIS"},
+                    "from": {"email": "arlen@blackaces.se", "name": "AEGIS"},
                     "subject": subject,
                     "content": [{"type": "text/plain", "value": body}],
                 },
