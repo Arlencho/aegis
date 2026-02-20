@@ -887,33 +887,37 @@ async def validate_json(request: ValidateRequest, req: Request):
 
     rules = [r.model_dump() for r in request.rules]
 
-    # Dispatch to correct chain reader
+    # Dispatch to correct chain reader — parallelize balance + transaction fetches
     if request.chain == "solana":
-        balances = await fetch_solana_balances(request.safe_address)
+        balances, transactions = await asyncio.gather(
+            fetch_solana_balances(request.safe_address),
+            fetch_solana_transactions(request.safe_address, limit=10),
+        )
         if balances is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"Could not fetch balances for Solana wallet: {request.safe_address}",
             )
-        transactions = await fetch_solana_transactions(request.safe_address, limit=10)
     else:
         # EVM chains: Ethereum uses Safe API fallback, L2s go direct to Etherscan
-        balances = await _fetch_evm_balances(request.safe_address, chain=request.chain)
+        balances, transactions = await asyncio.gather(
+            _fetch_evm_balances(request.safe_address, chain=request.chain),
+            _fetch_evm_transactions(request.safe_address, limit=20, chain=request.chain),
+        )
         if balances is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"Could not fetch balances for {request.chain} address: {request.safe_address}. "
                        "Please verify the address is correct.",
             )
-        transactions = await _fetch_evm_transactions(request.safe_address, limit=20, chain=request.chain)
 
     # Run deterministic validation
     report = validate_policy(balances, rules, transactions=transactions)
 
-    # Run AI analysis (non-blocking on failure)
+    # Run AI analysis — use fast model for public endpoint (no auth)
     ai_analysis = None
     if request.include_ai:
-        ai_analysis = await analyze_treasury(balances, report)
+        ai_analysis = await analyze_treasury(balances, report, fast=True)
 
     report["ai_analysis"] = ai_analysis
 

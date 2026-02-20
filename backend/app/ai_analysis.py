@@ -58,25 +58,37 @@ Provide a JSON response with exactly these keys:
 Respond with ONLY valid JSON, no markdown formatting or code blocks."""
 
 
-async def analyze_treasury(balances: dict, report: dict) -> dict | None:
-    """Run AI analysis on treasury data. Returns analysis dict or None on failure."""
+async def analyze_treasury(balances: dict, report: dict, fast: bool = False) -> dict | None:
+    """Run AI analysis on treasury data. Returns analysis dict or None on failure.
+
+    Args:
+        fast: If True, use Haiku for faster responses (e.g. public/free audits).
+    """
     api_key = _get_api_key()
     if not api_key:
         logger.warning("ANTHROPIC_API_KEY not set — skipping AI analysis")
         return None
+
+    model = "claude-haiku-4-5-20251001" if fast else "claude-sonnet-4-20250514"
 
     try:
         client = anthropic.AsyncAnthropic(api_key=api_key)
         prompt = _build_prompt(balances, report)
 
         message = await client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=model,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
 
         response_text = message.content[0].text
-        return json.loads(response_text)
+        # Strip markdown code fences if present (Haiku sometimes wraps JSON)
+        cleaned = response_text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3].strip()
+        return json.loads(cleaned)
 
     except anthropic.APIError as e:
         logger.error(f"Anthropic API error: {e}")
