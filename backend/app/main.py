@@ -1,5 +1,7 @@
 """AEGIS API — Treasury Risk Audit with AI Analysis"""
 
+from __future__ import annotations
+
 import asyncio
 import os
 import re
@@ -7,6 +9,7 @@ import secrets
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 import bcrypt
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
@@ -17,7 +20,7 @@ from .validator import validate_policy
 from .safe_reader import fetch_safe_balances, fetch_safe_transactions
 from .eth_reader import fetch_eoa_balances, fetch_eoa_transactions
 from .solana_reader import fetch_solana_balances, fetch_solana_transactions
-from .alerts import send_alerts
+from .alerts import send_alerts, send_password_reset_email
 from .ai_analysis import analyze_treasury
 from .auth import get_current_user, get_optional_user
 from .database import (
@@ -26,6 +29,7 @@ from .database import (
     save_audit, get_audit_history, get_audit_detail,
     set_share_token, clear_share_token, get_audit_by_share_token,
     create_user, get_user_by_email, get_user_by_id, update_user_name,
+    create_reset_token, validate_reset_token, update_user_password,
     create_organization, get_user_orgs, get_org, get_org_member, get_org_members,
     add_org_member, remove_org_member,
     create_client, get_clients, get_client, update_client, delete_client,
@@ -174,6 +178,15 @@ class VerifyRequest(BaseModel):
     password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
 class ClientCreateRequest(BaseModel):
     name: str
     description: str | None = None
@@ -286,6 +299,45 @@ async def verify_credentials(request: VerifyRequest, req: Request):
     }
 
 
+@app.post("/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest, req: Request):
+    """Send a password reset link. Always returns success to prevent email enumeration."""
+    if not _check_rate_limit(req.client.host if req.client else "unknown"):
+        raise HTTPException(status_code=429, detail="Too many requests.")
+
+    if "@" not in request.email or "." not in request.email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+
+    user = await get_user_by_email(request.email)
+    if user:
+        token = secrets.token_urlsafe(24)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        stored = await create_reset_token(request.email, token, expires_at)
+        if stored:
+            asyncio.create_task(send_password_reset_email(request.email.lower().strip(), token))
+
+    return {"message": "If that email exists, we sent a reset link. Check your inbox."}
+
+
+@app.post("/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest, req: Request):
+    """Reset password using a valid reset token."""
+    if not _check_rate_limit(req.client.host if req.client else "unknown"):
+        raise HTTPException(status_code=429, detail="Too many requests.")
+
+    if len(request.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    user = await validate_reset_token(request.token)
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    password_hash = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
+    await update_user_password(user["id"], password_hash)
+
+    return {"message": "Password updated. You can now sign in."}
+
+
 class UpdateProfileRequest(BaseModel):
     name: str | None = None
 
@@ -295,7 +347,10 @@ async def update_me(request: UpdateProfileRequest, user: dict = Depends(get_curr
     """Update current user profile."""
     user_id = _get_user_id(user)
     if request.name is not None:
-        await update_user_name(user_id, request.name.strip())
+        name = request.name.strip()
+        if len(name) > 100:
+            raise HTTPException(status_code=400, detail="Name must be 100 characters or less")
+        await update_user_name(user_id, name)
     db_user = await get_user_by_id(user_id)
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -588,13 +643,15 @@ async def update_wallet_endpoint(
     user: dict = Depends(get_current_user),
 ):
     """Update a wallet's label."""
+    if len(request.label) > 100:
+        raise HTTPException(status_code=400, detail="Label must be 100 characters or less")
     user_id = _get_user_id(user)
     wallet = await get_wallet(wallet_id)
     if wallet is None:
         raise HTTPException(status_code=404, detail="Wallet not found")
     if not await user_can_access_client(user_id, wallet["client_id"]):
         raise HTTPException(status_code=404, detail="Wallet not found")
-    updated = await update_wallet(wallet_id, request.label)
+    updated = await update_wallet(wallet_id, request.label.strip())
     if updated is None:
         raise HTTPException(status_code=404, detail="Wallet not found")
     return updated
@@ -811,6 +868,20 @@ async def waitlist_count():
     """Return total waitlist signups for social proof."""
     count = await get_waitlist_count()
     return {"count": count}
+
+
+@app.get("/stats/public")
+async def public_stats():
+    """Return public-facing stats for the landing page social proof."""
+    from .database import _pool
+    waitlist = await get_waitlist_count()
+    audit_count = 0
+    if _pool:
+        try:
+            audit_count = await _pool.fetchval("SELECT COUNT(*) FROM audit_history")
+        except Exception:
+            pass
+    return {"waitlist_count": waitlist, "audit_count": audit_count}
 
 
 # --- Validation endpoints ---

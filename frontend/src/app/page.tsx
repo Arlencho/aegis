@@ -12,6 +12,7 @@ import HowItWorksSection from "./components/landing/HowItWorksSection";
 import FeaturesSection from "./components/landing/FeaturesSection";
 import ComparisonSection from "./components/landing/ComparisonSection";
 import CredibilityStrip from "./components/landing/CredibilityStrip";
+import SocialProofSection from "./components/landing/SocialProofSection";
 import CTAFooter from "./components/landing/CTAFooter";
 
 import ChainSelector from "./components/demo/ChainSelector";
@@ -121,6 +122,7 @@ export default function Home() {
       <FeaturesSection />
       <ComparisonSection />
       <CredibilityStrip />
+      <SocialProofSection />
 
       {/* Interactive Demo */}
       <section id="demo" className="py-16 md:py-24 px-4 sm:px-6 md:px-12">

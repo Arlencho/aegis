@@ -231,6 +231,21 @@ async def init_db():
             except Exception:
                 pass
 
+            # --- Password reset columns on users ---
+            try:
+                await conn.execute("""
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token TEXT
+                """)
+                await conn.execute("""
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMPTZ
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_users_reset_token
+                        ON users (reset_token) WHERE reset_token IS NOT NULL
+                """)
+            except Exception:
+                pass
+
             # --- Migration: move old wallets (user_id-based) to client model ---
             # Check if the old wallets table has a user_id column
             has_user_id_col = await conn.fetchval("""
@@ -373,6 +388,57 @@ async def get_user_by_id(user_id: int) -> dict | None:
     except Exception as e:
         logger.error(f"User lookup failed: {e}")
         return None
+
+
+# --- Password Reset ---
+
+
+async def create_reset_token(email: str, token: str, expires_at) -> bool:
+    """Set a password reset token on a user. Returns True if a user with that email was found."""
+    if not _pool:
+        return False
+    try:
+        result = await _pool.execute(
+            """UPDATE users SET reset_token = $2, reset_token_expires_at = $3, updated_at = NOW()
+               WHERE email = $1""",
+            email.lower().strip(), token, expires_at,
+        )
+        return result == "UPDATE 1"
+    except Exception as e:
+        logger.error(f"Create reset token failed: {e}")
+        return False
+
+
+async def validate_reset_token(token: str) -> dict | None:
+    """Validate a reset token and return the user if valid and not expired."""
+    if not _pool:
+        return None
+    try:
+        row = await _pool.fetchrow(
+            """SELECT id, email FROM users
+               WHERE reset_token = $1 AND reset_token_expires_at > NOW()""",
+            token,
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Validate reset token failed: {e}")
+        return None
+
+
+async def update_user_password(user_id: int, password_hash: str) -> None:
+    """Update password and clear the reset token."""
+    if not _pool:
+        return
+    try:
+        await _pool.execute(
+            """UPDATE users
+               SET password_hash = $2, reset_token = NULL, reset_token_expires_at = NULL,
+                   updated_at = NOW()
+               WHERE id = $1""",
+            user_id, password_hash,
+        )
+    except Exception as e:
+        logger.error(f"Password update failed: {e}")
 
 
 # --- Organization Management ---

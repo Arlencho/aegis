@@ -1,5 +1,7 @@
 """Alert dispatcher — Telegram + SendGrid notifications on rule breaches."""
 
+from __future__ import annotations
+
 import os
 import logging
 import httpx
@@ -10,6 +12,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_ALERT_CHAT_ID", "")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
 ALERT_EMAIL = os.getenv("ALERT_EMAIL", "")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://aegistreasury.com")
 
 
 async def send_alerts(safe_address: str, failures: list[dict], treasury_name: str):
@@ -68,3 +71,37 @@ async def _send_email_alert(safe_address: str, failures: list[dict], treasury_na
             )
         except httpx.HTTPError as e:
             logger.error(f"SendGrid alert failed: {e}")
+
+
+async def send_password_reset_email(email: str, token: str) -> None:
+    """Send a password reset link via SendGrid."""
+    if not SENDGRID_API_KEY:
+        logger.warning("SENDGRID_API_KEY not set — password reset email skipped")
+        return
+
+    reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+    subject = "AEGIS — Reset Your Password"
+    body = (
+        f"You requested a password reset for your AEGIS account.\n\n"
+        f"Click here to reset your password:\n{reset_url}\n\n"
+        f"This link expires in 1 hour. If you didn't request this, "
+        f"you can safely ignore this email."
+    )
+
+    async with httpx.AsyncClient() as client:
+        try:
+            await client.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                headers={
+                    "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "personalizations": [{"to": [{"email": email}]}],
+                    "from": {"email": "noreply@aegistreasury.com", "name": "AEGIS"},
+                    "subject": subject,
+                    "content": [{"type": "text/plain", "value": body}],
+                },
+            )
+        except httpx.HTTPError as e:
+            logger.error(f"Password reset email failed: {e}")
