@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   title: "AEGIS — Treasury Risk Audit with AI Analysis",
   description:
     "Instant compliance monitoring for crypto treasuries. 10 regulatory-aligned risk rules, AI-powered analysis, and exportable PDF reports — in 30 seconds.",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
   keywords: [
     "treasury audit",
     "crypto compliance",
@@ -40,7 +44,7 @@ export const metadata: Metadata = {
     locale: "en_US",
     images: [
       {
-        url: "https://aegistreasury.com/opengraph-image",
+        url: "https://aegistreasury.com/og-image.png",
         width: 1200,
         height: 630,
         alt: "AEGIS — Treasury Risk Audit with AI Analysis",
@@ -52,7 +56,7 @@ export const metadata: Metadata = {
     title: "AEGIS — Treasury Risk Audit with AI",
     description:
       "10 compliance rules. AI analysis. PDF reports. 30 seconds.",
-    images: ["https://aegistreasury.com/opengraph-image"],
+    images: ["https://aegistreasury.com/og-image.png"],
   },
   robots: {
     index: true,

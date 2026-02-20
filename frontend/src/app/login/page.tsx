@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import { signIn } from "next-auth/react";
+import Image from "next/image";
 import Link from "next/link";
 
 export default function LoginPage() {
@@ -38,10 +39,10 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <Link href="/" className="text-2xl font-bold tracking-tight">
-            AEGIS
+          <Link href="/" className="inline-block">
+            <Image src="/logo-banner.png" alt="AEGIS" width={240} height={100} className="h-16 w-auto mx-auto" />
           </Link>
-          <p className="text-gray-400 text-sm mt-2">Sign in to your dashboard</p>
+          <p className="text-gray-400 text-sm mt-3">Sign in to your dashboard</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

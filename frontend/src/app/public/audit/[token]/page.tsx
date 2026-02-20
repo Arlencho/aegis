@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
 import ReportCard from "../../../components/report/ReportCard";
 import AIAnalysisPanel from "../../../components/report/AIAnalysisPanel";
@@ -100,13 +101,8 @@ export default function PublicAuditPage() {
       {/* Header */}
       <div className="border-b border-gray-800">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition">
-            <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-              </svg>
-            </div>
-            <span className="font-bold text-lg">AEGIS</span>
+          <Link href="/" className="hover:opacity-80 transition">
+            <Image src="/logo-mark-raw.png" alt="AEGIS" width={110} height={33} className="h-7 w-auto" />
           </Link>
           <span className="text-[10px] px-2 py-1 rounded bg-blue-400/10 text-blue-400 font-medium uppercase">
             Shared Report

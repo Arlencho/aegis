@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -69,8 +70,9 @@ export default function Sidebar({ userName }: { userName?: string | null }) {
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:flex-col md:w-56 md:fixed md:inset-y-0 bg-gray-950 border-r border-gray-800">
         <div className="px-4 py-5 border-b border-gray-800">
-          <Link href="/" className="text-lg font-bold tracking-tight">
-            AEGIS <span className="text-xs font-normal text-blue-400 ml-1">Pro</span>
+          <Link href="/" className="flex items-center gap-2">
+            <Image src="/logo-mark-raw.png" alt="AEGIS" width={110} height={33} className="h-7 w-auto" />
+            <span className="text-xs font-normal text-blue-400">Pro</span>
           </Link>
         </div>
 
