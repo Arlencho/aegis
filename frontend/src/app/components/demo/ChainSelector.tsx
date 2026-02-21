@@ -10,7 +10,8 @@ const CHAIN_COLORS: Record<Chain, string> = {
   polygon: "bg-violet-600/20 border-violet-500 text-violet-300",
 };
 
-const ACTIVE_CHAINS: Chain[] = ["ethereum", "solana", "base", "arbitrum", "polygon", "bsc"];
+const ACTIVE_CHAINS: Chain[] = ["ethereum", "solana", "arbitrum", "polygon"];
+const COMING_SOON_CHAINS: Chain[] = ["base", "bsc"];
 
 export default function ChainSelector({
   chain,
@@ -33,6 +34,18 @@ export default function ChainSelector({
           }`}
         >
           {CHAIN_CONFIG[c].name}
+        </button>
+      ))}
+      {COMING_SOON_CHAINS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          disabled
+          className="px-3 py-2 rounded-lg text-sm font-medium border min-h-[44px]
+                     bg-gray-900/30 border-gray-800/50 text-gray-700 cursor-not-allowed"
+        >
+          {CHAIN_CONFIG[c].name}
+          <span className="text-[9px] ml-1 text-gray-600">Soon</span>
         </button>
       ))}
     </div>
