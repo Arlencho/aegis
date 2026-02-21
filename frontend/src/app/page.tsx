@@ -11,6 +11,7 @@ import ProblemSection from "./components/landing/ProblemSection";
 import HowItWorksSection from "./components/landing/HowItWorksSection";
 import FeaturesSection from "./components/landing/FeaturesSection";
 import ComparisonSection from "./components/landing/ComparisonSection";
+import ValueStackSection from "./components/landing/ValueStackSection";
 import CredibilityStrip from "./components/landing/CredibilityStrip";
 import SocialProofSection from "./components/landing/SocialProofSection";
 import CTAFooter from "./components/landing/CTAFooter";
@@ -121,6 +122,7 @@ export default function Home() {
       <HowItWorksSection />
       <FeaturesSection />
       <ComparisonSection />
+      <ValueStackSection />
       <CredibilityStrip />
       <SocialProofSection />
 

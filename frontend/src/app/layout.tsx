@@ -57,6 +57,8 @@ export const metadata: Metadata = {
     description:
       "10 compliance rules. AI analysis. PDF reports. 30 seconds.",
     images: ["https://aegistreasury.com/og-image.png"],
+    creator: "@aegistreasury",
+    site: "@aegistreasury",
   },
   robots: {
     index: true,
@@ -91,6 +93,78 @@ export default function RootLayout({
                 price: "0",
                 priceCurrency: "USD",
               },
+            }),
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              name: "AEGIS",
+              url: "https://aegistreasury.com",
+              logo: "https://aegistreasury.com/og-image.png",
+              description:
+                "Real-time treasury compliance platform for crypto. 10 institutional-grade risk rules, AI-powered analysis, 6 chains supported.",
+              sameAs: [
+                "https://x.com/aegistreasury",
+                "https://linkedin.com/company/aegistreasury",
+              ],
+            }),
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              name: "AEGIS",
+              url: "https://aegistreasury.com",
+            }),
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "FAQPage",
+              mainEntity: [
+                {
+                  "@type": "Question",
+                  name: "What is crypto treasury compliance?",
+                  acceptedAnswer: {
+                    "@type": "Answer",
+                    text: "Crypto treasury compliance means enforcing risk policies on digital asset portfolios — such as concentration limits, stablecoin floors, and transaction caps — to ensure treasuries meet regulatory and governance standards.",
+                  },
+                },
+                {
+                  "@type": "Question",
+                  name: "How does AEGIS audit a crypto wallet?",
+                  acceptedAnswer: {
+                    "@type": "Answer",
+                    text: "AEGIS reads on-chain data from any Ethereum, Solana, Base, Arbitrum, Polygon, or BSC wallet, runs it against 10 configurable compliance rules, and generates an AI-powered risk analysis with stress tests and recommendations — all in about 30 seconds.",
+                  },
+                },
+                {
+                  "@type": "Question",
+                  name: "Is AEGIS free to use?",
+                  acceptedAnswer: {
+                    "@type": "Answer",
+                    text: "Yes. AEGIS offers a free tier with on-demand audits, 10 compliance rules, AI risk analysis, and shareable audit links — no signup required. Paid plans start at $149/month for scheduled monitoring and advanced features.",
+                  },
+                },
+                {
+                  "@type": "Question",
+                  name: "Which blockchains does AEGIS support?",
+                  acceptedAnswer: {
+                    "@type": "Answer",
+                    text: "AEGIS supports Ethereum, Solana, Base, Arbitrum, Polygon, and BSC (Binance Smart Chain) — covering the most widely used chains for treasury management.",
+                  },
+                },
+              ],
             }),
           }}
         />

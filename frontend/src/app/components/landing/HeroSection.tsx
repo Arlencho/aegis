@@ -21,8 +21,9 @@ export default function HeroSection() {
             </h1>
 
             <p className="animate-fade-in-up-delay-2 text-gray-400 text-base sm:text-lg md:text-xl max-w-xl mb-8 leading-relaxed mx-auto lg:mx-0">
-              Paste any Ethereum or Solana wallet address. Get an instant
-              compliance audit with AI-powered risk analysis — in 30 seconds.
+              Paste any wallet address — Ethereum, Solana, Base, Arbitrum,
+              Polygon, or BSC. Get an instant compliance audit with AI-powered
+              risk analysis — in 30 seconds.
             </p>
 
             <div className="animate-fade-in-up-delay-3 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 mb-10">

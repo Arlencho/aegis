@@ -4,6 +4,31 @@ export const metadata: Metadata = {
   title: "AEGIS — Real-Time Treasury Compliance for Crypto",
   description:
     "AEGIS audits any crypto wallet against 10 institutional-grade risk rules with AI analysis. Ethereum, Solana, Base, Arbitrum, Polygon, BSC. Free instant audit — no signup required.",
+  openGraph: {
+    title: "AEGIS — Real-Time Treasury Compliance for Crypto",
+    description:
+      "Six tools in one platform. 10 compliance rules, AI risk analysis, multi-chain coverage. Replaces $17,400+/yr of separate tools.",
+    url: "https://aegistreasury.com/one-pager",
+    siteName: "AEGIS",
+    type: "website",
+    images: [
+      {
+        url: "https://aegistreasury.com/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "AEGIS — Treasury Compliance Platform for Crypto",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AEGIS — Six Tools. One Platform.",
+    description:
+      "10 compliance rules. AI analysis. PDF reports. 6 chains. Replaces $17,400+/yr of separate tools.",
+    images: ["https://aegistreasury.com/og-image.png"],
+    creator: "@aegistreasury",
+  },
+  alternates: { canonical: "/one-pager" },
 };
 
 export default function OnePagerPage() {
@@ -49,7 +74,21 @@ export default function OnePagerPage() {
             .op-stat { background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 16px; text-align: center; }
             .op-stat .num { font-size: 28px; font-weight: 800; color: #3b82f6; }
             .op-stat .label { font-size: 11px; color: #94a3b8; margin-top: 2px; }
-            .op-pricing-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 12px; }
+            .op-value-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 12px; }
+            .op-value-item { background: #111827; border: 1px solid #1e293b; border-radius: 6px; padding: 12px 14px; }
+            .op-value-item .val-name { font-size: 13px; color: #f8fafc; font-weight: 600; }
+            .op-value-item .val-ref { font-size: 10px; color: #64748b; margin-top: 2px; }
+            .op-value-item p { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+            .op-value-item .val-price { font-size: 12px; color: #64748b; text-decoration: line-through; margin-top: 6px; font-weight: 600; }
+            .op-value-total { text-align: center; margin-top: 16px; padding: 16px; background: #111827; border: 1px solid #1e293b; border-radius: 8px; }
+            .op-value-total .struck { font-size: 24px; font-weight: 800; color: #64748b; text-decoration: line-through; }
+            .op-value-total .included { font-size: 16px; font-weight: 700; color: #f8fafc; margin-top: 4px; }
+            .op-value-total .included span { color: #3b82f6; }
+            .op-platform-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+            .op-platform-item { background: #111827; border: 1px solid #1e293b; border-radius: 6px; padding: 12px 14px; }
+            .op-platform-item .plat-name { font-size: 13px; color: #f8fafc; font-weight: 600; }
+            .op-platform-item p { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+            .op-pricing-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-top: 12px; }
             .op-tier { background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 18px; text-align: center; }
             .op-tier.featured { border-color: #3b82f6; background: #0f1a2e; }
             .op-tier h3 { font-size: 14px; color: #f8fafc; margin-bottom: 4px; }
@@ -70,7 +109,9 @@ export default function OnePagerPage() {
               .op-rules-grid { grid-template-columns: 1fr; }
               .op-ai-grid { grid-template-columns: 1fr; }
               .op-stats { grid-template-columns: 1fr 1fr; }
-              .op-pricing-grid { grid-template-columns: 1fr; }
+              .op-value-grid { grid-template-columns: 1fr; }
+              .op-platform-grid { grid-template-columns: 1fr; }
+              .op-pricing-grid { grid-template-columns: 1fr 1fr; }
             }
             @media print {
               body { background: #fff; color: #1a1a2e; }
@@ -80,11 +121,15 @@ export default function OnePagerPage() {
               .op-header { border-bottom-color: #e2e8f0; }
               .op-section h2 { color: #2563eb; }
               .op-section p { color: #334155; }
-              .op-card, .op-rule, .op-ai-item, .op-stat, .op-tier, .op-demo-box { background: #f8fafc; border-color: #e2e8f0; }
+              .op-card, .op-rule, .op-ai-item, .op-stat, .op-tier, .op-demo-box, .op-value-item, .op-value-total, .op-platform-item { background: #f8fafc; border-color: #e2e8f0; }
               .op-card.problem h2 { color: #dc2626; }
               .op-card.solution h2 { color: #16a34a; }
-              .op-rule .rule-name, .op-ai-item .ai-name { color: #1a1a2e; }
-              .op-rule p, .op-ai-item p { color: #475569; }
+              .op-rule .rule-name, .op-ai-item .ai-name, .op-value-item .val-name, .op-platform-item .plat-name { color: #1a1a2e; }
+              .op-rule p, .op-ai-item p, .op-value-item p, .op-platform-item p { color: #475569; }
+              .op-value-item .val-price { color: #475569; }
+              .op-value-total .struck { color: #475569; }
+              .op-value-total .included { color: #1a1a2e; }
+              .op-value-total .included span { color: #2563eb; }
               .op-stat .num { color: #2563eb; }
               .op-stat .label { color: #475569; }
               .op-tier h3 { color: #1a1a2e; }
@@ -228,6 +273,90 @@ export default function OnePagerPage() {
         </div>
       </div>
 
+      {/* Platform capabilities */}
+      <div className="op-section">
+        <h2>Platform Capabilities</h2>
+        <p>
+          Beyond rules and AI, AEGIS is a full treasury operations platform.
+        </p>
+        <div className="op-platform-grid">
+          <div className="op-platform-item">
+            <div className="plat-name">Audit Sharing</div>
+            <p>Generate public links to share reports with stakeholders. Revoke access anytime.</p>
+          </div>
+          <div className="op-platform-item">
+            <div className="plat-name">Audit Comparison</div>
+            <p>Diff two audits side-by-side to track risk changes over time.</p>
+          </div>
+          <div className="op-platform-item">
+            <div className="plat-name">Team &amp; Org Management</div>
+            <p>Invite team members with role-based access (admin, member, viewer).</p>
+          </div>
+          <div className="op-platform-item">
+            <div className="plat-name">Notification Center</div>
+            <p>Real-time alerts on violations, risk changes, and audit completions.</p>
+          </div>
+          <div className="op-platform-item">
+            <div className="plat-name">PDF Reports</div>
+            <p>Download professional compliance reports for board presentations and auditors.</p>
+          </div>
+          <div className="op-platform-item">
+            <div className="plat-name">Client Management</div>
+            <p>Group wallets by entity. Manage multiple treasuries from one dashboard.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Value stack */}
+      <div className="op-section">
+        <h2>Six Tools. One Platform.</h2>
+        <p>
+          Every treasury cobbles together separate tools. AEGIS replaces the stack.
+        </p>
+        <div className="op-value-grid">
+          <div className="op-value-item">
+            <div className="val-name">Compliance Engine</div>
+            <div className="val-ref">Custom compliance tool</div>
+            <p>10-rule policy enforcement with configurable thresholds</p>
+            <div className="val-price">$2,400/yr</div>
+          </div>
+          <div className="op-value-item">
+            <div className="val-name">AI Risk Analyst</div>
+            <div className="val-ref">Risk consultant retainer</div>
+            <p>Stress tests, benchmarks, risk summaries, recommendations</p>
+            <div className="val-price">$6,000/yr</div>
+          </div>
+          <div className="op-value-item">
+            <div className="val-name">Portfolio Analytics</div>
+            <div className="val-ref">Analytics SaaS</div>
+            <p>HHI index, diversification scoring, value tracking</p>
+            <div className="val-price">$1,200/yr</div>
+          </div>
+          <div className="op-value-item">
+            <div className="val-name">Monitoring &amp; Alerts</div>
+            <div className="val-ref">Monitoring subscription</div>
+            <p>Scheduled audits, notifications on breaches and risk changes</p>
+            <div className="val-price">$2,400/yr</div>
+          </div>
+          <div className="op-value-item">
+            <div className="val-name">Reporting Suite</div>
+            <div className="val-ref">Reporting tool license</div>
+            <p>PDF reports, shareable audit links, audit comparison</p>
+            <div className="val-price">$1,800/yr</div>
+          </div>
+          <div className="op-value-item">
+            <div className="val-name">Multi-Chain Coverage</div>
+            <div className="val-ref">Multi-chain data aggregator</div>
+            <p>Ethereum, Solana, BSC, Base, Arbitrum, Polygon</p>
+            <div className="val-price">$3,600/yr</div>
+          </div>
+        </div>
+        <div className="op-value-total">
+          <div className="struck">$17,400+/yr</div>
+          <div className="included">Included with <span>AEGIS</span></div>
+        </div>
+      </div>
+
       <div className="op-section">
         <h2>Live Demo</h2>
         <div className="op-demo-box">
@@ -247,36 +376,48 @@ export default function OnePagerPage() {
 
       <div className="op-section">
         <h2>Pricing</h2>
+        <p>Start free. Upgrade when you need ongoing monitoring.</p>
         <div className="op-pricing-grid">
           <div className="op-tier">
-            <h3>Advisor</h3>
-            <div className="price">$500</div>
-            <div className="freq">per month</div>
+            <h3>Free</h3>
+            <div className="price">$0</div>
+            <div className="freq">forever</div>
             <ul>
-              <li>3 wallets monitored</li>
-              <li>Scheduled audits</li>
-              <li>Webhook alerts</li>
-              <li>Email support</li>
+              <li>On-demand audits</li>
+              <li>10 compliance rules</li>
+              <li>AI risk analysis</li>
+              <li>Shareable audit links</li>
             </ul>
           </div>
           <div className="op-tier featured">
-            <h3>Executor</h3>
-            <div className="price">$2,000</div>
+            <h3>Pro</h3>
+            <div className="price">$149</div>
             <div className="freq">per month</div>
             <ul>
-              <li>Up to 20 wallets</li>
-              <li>Custom rule thresholds</li>
-              <li>Team &amp; org management</li>
-              <li>Priority support</li>
+              <li>5 monitored wallets</li>
+              <li>Scheduled audits</li>
+              <li>Audit history &amp; comparison</li>
+              <li>PDF reports &amp; alerts</li>
             </ul>
           </div>
           <div className="op-tier">
-            <h3>Institution</h3>
-            <div className="price">$5,000</div>
+            <h3>Team</h3>
+            <div className="price">$499</div>
             <div className="freq">per month</div>
             <ul>
+              <li>20 monitored wallets</li>
+              <li>Client management</li>
+              <li>Team roles &amp; orgs</li>
+              <li>Multi-wallet dashboard</li>
+            </ul>
+          </div>
+          <div className="op-tier">
+            <h3>Enterprise</h3>
+            <div className="price">Custom</div>
+            <div className="freq">contact us</div>
+            <ul>
               <li>Unlimited wallets</li>
-              <li>Multi-org white-label</li>
+              <li>White-label option</li>
               <li>Dedicated engineer</li>
               <li>SLA guarantee</li>
             </ul>
